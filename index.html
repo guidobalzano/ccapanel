@@ -319,8 +319,8 @@ footer.foot{
 
     <div id="loginForm">
       <div class="field">
-        <label>Nome Utente</label>
-        <input id="li-user" type="text" autocomplete="username" placeholder="es. gbalzano">
+        <label>Email</label>
+        <input id="li-email" type="email" autocomplete="username" placeholder="es. nome@esempio.it">
       </div>
       <div class="field">
         <label>Password</label>
@@ -330,7 +330,6 @@ footer.foot{
       <div class="login-actions">
         <button class="btn btn-primary" onclick="doLogin()">Accedi</button>
       </div>
-      <div class="toggle-row">Non hai un account? <span onclick="showRegister()">Registrati come degustatore</span></div>
     </div>
 
     <div id="registerForm" class="hidden">
@@ -339,8 +338,12 @@ footer.foot{
         <input id="rg-name" type="text" placeholder="es. Guido Balzano">
       </div>
       <div class="field">
-        <label>Nome Utente</label>
-        <input id="rg-user" type="text" placeholder="scegli un nome utente">
+        <label>Nome Utente (per visualizzazione)</label>
+        <input id="rg-user" type="text" placeholder="es. gbalzano">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="rg-email" type="email" placeholder="es. nome@esempio.it">
       </div>
       <div class="field">
         <label>Password</label>
@@ -352,8 +355,6 @@ footer.foot{
       </div>
       <div class="toggle-row"><span onclick="showLogin()">← Torna al login</span></div>
     </div>
-
-    <div class="seed-note">I dati restano salvati su questo dispositivo/browser.<br>Ogni degustatore ha le proprie credenziali e le proprie schede.</div>
   </div>
 </div>
 
@@ -566,8 +567,7 @@ footer.foot{
 <script>
 window.CCA_CONFIG = {
   SUPABASE_URL: 'https://bdmguivcpqdqakaextqd.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA',
-  EMAIL_DOMAIN: 'cigarclub.local'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA'
 };
 </script>
 <script>
@@ -582,10 +582,10 @@ window.CCA_CONFIG = {
       document.body.innerHTML =
         '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#171311;color:#f4ead8;font-family:sans-serif;padding:30px;text-align:center;">' +
         '<div style="max-width:520px;"><h2 style="color:#ecd49f;">Configurazione Supabase mancante</h2>' +
-        '<p style="line-height:1.6;">Apri il file <code>config.js</code> e inserisci <strong>SUPABASE_URL</strong> e <strong>SUPABASE_ANON_KEY</strong> ' +
-        'del tuo progetto Supabase (Project Settings → API), poi ricarica la pagina.</p></div></div>';
+        '<p style="line-height:1.6;">Inserisci <strong>SUPABASE_URL</strong> e <strong>SUPABASE_ANON_KEY</strong> ' +
+        'del tuo progetto Supabase (Project Settings → API) nello script in cima al file, poi ricarica la pagina.</p></div></div>';
     });
-    throw new Error('CCA_CONFIG non configurato — vedi config.js');
+    throw new Error('CCA_CONFIG non configurato');
   }
 })();
 
@@ -593,7 +593,6 @@ window.CCA_CONFIG = {
    CLIENT SUPABASE
    ============================================================ */
 const sb = window.supabase.createClient(window.CCA_CONFIG.SUPABASE_URL, window.CCA_CONFIG.SUPABASE_ANON_KEY);
-function usernameToEmail(u){ return u.trim().toLowerCase() + '@' + window.CCA_CONFIG.EMAIL_DOMAIN; }
 
 /* ============================================================
    DATA MODEL (campi scheda — invariato rispetto alla versione precedente)
@@ -714,13 +713,13 @@ function showLogin(){
 async function doRegister(){
   const full_name = document.getElementById('rg-name').value.trim();
   const username = document.getElementById('rg-user').value.trim().toLowerCase();
+  const email = document.getElementById('rg-email').value.trim().toLowerCase();
   const pass = document.getElementById('rg-pass').value;
   const err = document.getElementById('rg-err');
   err.textContent = '';
-  if(!full_name || !username || !pass){ err.textContent = 'Compila tutti i campi.'; return; }
+  if(!full_name || !username || !email || !pass){ err.textContent = 'Compila tutti i campi.'; return; }
   if(pass.length < 6){ err.textContent = 'La password deve avere almeno 6 caratteri.'; return; }
 
-  const email = usernameToEmail(username);
   const { data, error } = await sb.auth.signUp({
     email, password: pass,
     options: { data: { username, full_name, role: 'degustatore' } }
@@ -730,21 +729,20 @@ async function doRegister(){
 }
 
 async function doLogin(){
-  const username = document.getElementById('li-user').value.trim().toLowerCase();
+  const email = document.getElementById('li-email').value.trim().toLowerCase();
   const pass = document.getElementById('li-pass').value;
   const err = document.getElementById('li-err');
   err.textContent = '';
-  if(!username || !pass){ err.textContent = 'Inserisci nome utente e password.'; return; }
+  if(!email || !pass){ err.textContent = 'Inserisci email e password.'; return; }
 
-  const email = usernameToEmail(username);
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if(error){ err.textContent = 'Nome utente o password non corretti.'; return; }
+  if(error){ err.textContent = 'Email o password non corretti.'; return; }
   await afterAuthSuccess();
 }
 
 function traduciErroreAuth(error){
   const m = (error && error.message) || '';
-  if(m.includes('already registered')) return 'Nome utente già esistente.';
+  if(m.includes('already registered')) return 'Email già registrata.';
   if(m.includes('Password')) return 'Password non valida (minimo 6 caratteri).';
   return 'Errore: ' + m;
 }
@@ -770,7 +768,7 @@ async function logout(){
   currentUser = null;
   document.getElementById('app').classList.add('hidden');
   document.getElementById('loginShell').classList.remove('hidden');
-  document.getElementById('li-user').value = '';
+  document.getElementById('li-email').value = '';
   document.getElementById('li-pass').value = '';
 }
 

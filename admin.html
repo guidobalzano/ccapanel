@@ -345,8 +345,8 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
 
     <div id="loginForm">
       <div class="field">
-        <label>Nome Utente</label>
-        <input id="li-user" type="text" autocomplete="username" placeholder="es. admin">
+        <label>Email</label>
+        <input id="li-email" type="email" autocomplete="username" placeholder="es. admin@esempio.it">
       </div>
       <div class="field">
         <label>Password</label>
@@ -358,7 +358,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
       </div>
     </div>
 
-    <div class="seed-note">Accesso riservato agli amministratori.<br>L'account admin viene creato/abilitato direttamente sul database.</div>
+    <div class="seed-note">Accesso riservato agli amministratori.</div>
   </div>
 </div>
 
@@ -498,8 +498,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
 <script>
 window.CCA_CONFIG = {
   SUPABASE_URL: 'https://bdmguivcpqdqakaextqd.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA',
-  EMAIL_DOMAIN: 'cigarclub.local'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA'
 };
 </script>
 <script>
@@ -518,7 +517,6 @@ window.CCA_CONFIG = {
 })();
 
 const sb = window.supabase.createClient(window.CCA_CONFIG.SUPABASE_URL, window.CCA_CONFIG.SUPABASE_ANON_KEY);
-function usernameToEmail(u){ return u.trim().toLowerCase() + '@' + window.CCA_CONFIG.EMAIL_DOMAIN; }
 
 let currentUser = null;
 let _panelsCache = [];
@@ -536,15 +534,14 @@ const PANEL_STATUS_META = {
    AUTH (solo utenti con ruolo admin)
    ============================================================ */
 async function doLogin(){
-  const username = document.getElementById('li-user').value.trim().toLowerCase();
+  const email = document.getElementById('li-email').value.trim().toLowerCase();
   const pass = document.getElementById('li-pass').value;
   const err = document.getElementById('li-err');
   err.textContent = '';
-  if(!username || !pass){ err.textContent = 'Inserisci nome utente e password.'; return; }
+  if(!email || !pass){ err.textContent = 'Inserisci email e password.'; return; }
 
-  const email = usernameToEmail(username);
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if(error){ err.textContent = 'Nome utente o password non corretti.'; return; }
+  if(error){ err.textContent = 'Email o password non corretti.'; return; }
 
   const { data: { user } } = await sb.auth.getUser();
   const { data: profile, error: pErr } = await sb.from('profiles').select('*').eq('id', user.id).single();
