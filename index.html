@@ -577,24 +577,17 @@ footer.foot{
     </div>
   </div>
 
-  <!-- ===== EXPORT MODAL ===== -->
-  <div id="exportModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;">
-    <div style="background:var(--login-bg);color:var(--login-ink);max-width:720px;width:100%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);">
-      <div style="padding:18px 22px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;">
-        <strong id="exportModalTitle" style="font-family:'Playfair Display',serif;font-size:16px;">Sottometti Panel</strong>
-        <button class="btn btn-small" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closeExportModal()">Chiudi</button>
-      </div>
-      <div style="padding:16px 22px;font-size:12.5px;color:#5a4632;">
-        Il download automatico non è disponibile in questo ambiente. Copia il testo sotto e salvalo in un file con estensione <strong>.xml</strong>, oppure usa il pulsante "Scarica file".
-      </div>
-      <div id="exportUploadStatus" style="padding:0 22px 12px;font-size:12.5px;font-weight:600;"></div>
-      <textarea id="exportXmlContent" readonly style="flex:1;margin:0 22px 18px;background:#fff;color:#1c1712;border:1px solid #ccc;font-family:monospace;font-size:12px;min-height:280px;"></textarea>
-      <div style="padding:0 22px 20px;display:flex;gap:12px;">
-        <button class="btn btn-primary" onclick="copyExportXml()">Copia testo</button>
-        <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="downloadExportXml()">Scarica file</button>
+  <!-- ===== ALERT MODAL ===== -->
+  <div id="alertModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1002;padding:20px;">
+    <div style="background:var(--login-bg);color:var(--login-ink);max-width:420px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;">
+      <strong style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:14px;color:var(--red);">CCA Panel</strong>
+      <div id="alertModalText" style="font-size:15px;line-height:1.6;margin-bottom:22px;"></div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="closeAlertModal()">Ok</button>
       </div>
     </div>
   </div>
+
 
   <!-- ===== PASSWORD MODAL ===== -->
   <div id="passwordModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1001;padding:20px;">
@@ -738,6 +731,14 @@ let _myAssignedCache = [];  // sigari assegnati all'utente corrente (tutte le ri
    CUSTOM CONFIRM (modale in pagina)
    ============================================================ */
 let _confirmCallback = null;
+function showAlert(message){
+  document.getElementById('alertModalText').textContent = message;
+  document.getElementById('alertModal').classList.remove('hidden');
+}
+function closeAlertModal(){
+  document.getElementById('alertModal').classList.add('hidden');
+}
+
 function askConfirm(message, onAccept){
   document.getElementById('confirmModalText').textContent = message;
   _confirmCallback = onAccept;
@@ -1228,7 +1229,7 @@ function fillTripleGroup(defs, data){
    ============================================================ */
 async function saveTasting(){
   const sigaro = document.getElementById('f-sigaro').value.trim();
-  if(!sigaro){ alert('Inserisci il numero del sigaro.'); return; }
+  if(!sigaro){ showAlert('Inserisci il numero del sigaro.'); return; }
 
   let sigaroId = document.getElementById('formView').dataset.sigaroId;
   if(!sigaroId){
@@ -1242,7 +1243,7 @@ async function saveTasting(){
     }
   }
   if(!sigaroId){
-    alert('Non è stato possibile identificare il sigaro nel database. Avvia la degustazione da un Panel.');
+    showAlert('Non è stato possibile identificare il sigaro nel database. Avvia la degustazione da un Panel.');
     return;
   }
 
@@ -1275,7 +1276,7 @@ async function saveTasting(){
   } else {
     ({ error } = await sb.from('schede_degustazione').upsert(payload, { onConflict: 'sigaro_id,utente_id' }));
   }
-  if(error){ alert('Errore nel salvataggio: ' + error.message); return; }
+  if(error){ showAlert('Errore nel salvataggio: ' + error.message); return; }
 
   currentEditId = null;
   if(formOrigin === 'panelDetail' && currentPanel){
@@ -1292,7 +1293,7 @@ async function saveTasting(){
 function deleteTasting(id){
   askConfirm('Eliminare definitivamente questa scheda? Il sigaro tornerà disponibile come "Da degustare" nel suo panel.', async ()=>{
     const { error } = await sb.from('schede_degustazione').delete().eq('id', id);
-    if(error){ alert('Errore eliminazione: ' + error.message); return; }
+    if(error){ showAlert('Errore eliminazione: ' + error.message); return; }
     if(currentPanel && !document.getElementById('panelDetailView').classList.contains('hidden')){
       await renderPanelDetail();
     } else {
@@ -1304,7 +1305,7 @@ function deleteCurrentFromDetail(){
   if(!currentDetailId) return;
   askConfirm('Eliminare definitivamente questa scheda? Il sigaro tornerà disponibile come "Da degustare" nel suo panel.', async ()=>{
     const { error } = await sb.from('schede_degustazione').delete().eq('id', currentDetailId);
-    if(error){ alert('Errore eliminazione: ' + error.message); return; }
+    if(error){ showAlert('Errore eliminazione: ' + error.message); return; }
     if(detailOrigin === 'panelDetail' && currentPanel){
       await renderPanelDetail();
       showView('panelDetailView');
@@ -1319,7 +1320,7 @@ function deleteCurrentFromDetail(){
    ============================================================ */
 async function openEdit(id, sigaroId){
   const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero))').eq('id', id).single();
-  if(error || !t){ alert('Scheda non trovata.'); return; }
+  if(error || !t){ showAlert('Scheda non trovata.'); return; }
   currentEditId = id;
   resetForm();
   document.getElementById('formView').dataset.sigaroId = sigaroId || t.sigaro_id;
@@ -1352,7 +1353,7 @@ async function openEdit(id, sigaroId){
    ============================================================ */
 async function openDetail(id){
   const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero))').eq('id', id).single();
-  if(error || !t){ alert('Scheda non trovata.'); return; }
+  if(error || !t){ showAlert('Scheda non trovata.'); return; }
   currentDetailId = id;
   document.getElementById('detailHost').innerHTML = renderDetailHTML(t);
   showView('detailView');
@@ -1500,8 +1501,8 @@ async function exportPanel(){
     .select('*, sigari!inner(numero_sigaro, panel_id, panels!inner(numero))')
     .eq('utente_id', currentUser.id)
     .eq('sigari.panels.numero', currentPanel.numero);
-  if(error){ alert('Errore nel recupero delle schede: ' + error.message); return; }
-  if(!data || data.length===0){ alert('Nessuna scheda compilata per questo panel.'); return; }
+  if(error){ showAlert('Errore nel recupero delle schede: ' + error.message); return; }
+  if(!data || data.length===0){ showAlert('Nessuna scheda compilata per questo panel.'); return; }
 
   const body = data.map(t => tasteToXml(t, currentPanel.numero, t.sigari.numero_sigaro)).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<schede_degustazione catador="${xmlEsc(currentUser.name)}" panel="${xmlEsc(currentPanel.numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}\n</schede_degustazione>`;
@@ -1509,64 +1510,21 @@ async function exportPanel(){
   const namePart = sanitizeFileNamePart(currentUser.name);
   _exportFilename = `panel_${currentPanel.numero}_${namePart}.xml`;
 
-  document.getElementById('exportModalTitle').textContent = 'Sottometti Panel ' + currentPanel.numero;
-  document.getElementById('exportXmlContent').value = xml;
-  const statusEl = document.getElementById('exportUploadStatus');
-  statusEl.textContent = 'Caricamento sull\'archivio in corso…';
-  statusEl.style.color = '#5a4632';
-  document.getElementById('exportModal').classList.remove('hidden');
-
-  // upload sull'archivio cloud (Supabase Storage) — un file per panel+panelist,
-  // sovrascritto ad ogni nuova sottomissione dello stesso panel
   try{
     const blob = new Blob([xml], {type:'application/xml'});
     const { error: upErr } = await sb.storage
       .from('panel-exports')
       .upload(_exportFilename, blob, { upsert: true, contentType: 'application/xml' });
     if(upErr){
-      statusEl.textContent = '⚠️ Caricamento sull\'archivio non riuscito: ' + upErr.message + ' (puoi comunque scaricare/copiare il file qui sotto).';
-      statusEl.style.color = '#b5202c';
-    } else {
-      statusEl.textContent = '✓ Caricato nell\'archivio come "' + _exportFilename + '".';
-      statusEl.style.color = '#2f7a3f';
+      showAlert('Non è stato possibile sottomettere il panel: ' + upErr.message);
+      return;
     }
   }catch(err){
-    statusEl.textContent = '⚠️ Caricamento sull\'archivio non riuscito: ' + err.message;
-    statusEl.style.color = '#b5202c';
+    showAlert('Non è stato possibile sottomettere il panel: ' + err.message);
+    return;
   }
 
-  // tentativo di download locale, in aggiunta all'archiviazione cloud
-  try{
-    const blob = new Blob([xml], {type:'application/xml;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = _exportFilename; a.style.display = 'none';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }catch(err){ console.warn('Download automatico non disponibile:', err); }
-}
-
-function closeExportModal(){ document.getElementById('exportModal').classList.add('hidden'); }
-
-function copyExportXml(){
-  const ta = document.getElementById('exportXmlContent');
-  ta.select();
-  try{
-    navigator.clipboard.writeText(ta.value).then(()=>alert('XML copiato negli appunti.'))
-      .catch(()=>{ document.execCommand('copy'); alert('XML copiato negli appunti.'); });
-  }catch(e){ document.execCommand('copy'); alert('XML copiato negli appunti.'); }
-}
-
-function downloadExportXml(){
-  try{
-    const xml = document.getElementById('exportXmlContent').value;
-    const blob = new Blob([xml], {type:'application/xml;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = _exportFilename; a.style.display = 'none';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }catch(err){ alert('Download non disponibile: copia il testo manualmente con "Copia testo".'); }
+  showAlert('Panel ' + currentPanel.numero + ' sottomesso con successo.');
 }
 
 /* ============================================================
