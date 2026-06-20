@@ -137,6 +137,13 @@ select option{
   background:#fbf8f2;
   color:#1c1712;
 }
+input[type="date"]{
+  -webkit-appearance:none;
+  appearance:none;
+  line-height:1.2;
+  height:auto;
+  min-height:0;
+}
 input:focus,select:focus,textarea:focus{
   outline:none;border-color:var(--gold);background:rgba(244,234,216,.09);
 }
@@ -305,9 +312,30 @@ footer.foot{
 }
 
 @media (max-width:680px){
-  .qrow{grid-template-columns:1fr;}
+  .wrap{padding:24px 14px 70px;}
+  .qrow{grid-template-columns:1fr;gap:8px;}
   .meta-row{flex-direction:column;}
   .topbar{padding:14px 16px;flex-wrap:wrap;gap:10px;}
+
+  .sheet{padding:22px 14px 36px;}
+  .sheet-header{padding-bottom:14px;margin-bottom:22px;}
+
+  .triple{grid-template-columns:repeat(3,1fr);gap:6px;}
+  .triple > div:first-child{display:none;}
+  .triple .ph{font-size:10px;}
+  .scale3{gap:3px;}
+  .scale3 .opt span{padding:5px 7px;font-size:10.5px;}
+
+  .score-row{gap:12px;}
+  .score-input input{width:80px;font-size:17px;}
+  .score-label{font-size:13px;}
+
+  .form-footer{flex-direction:column;align-items:stretch;}
+  .form-footer .btn{width:100%;text-align:center;}
+  .form-footer > div{display:flex;flex-direction:column;gap:10px;width:100%;}
+
+  .block-title{font-size:14px;padding:8px 14px;}
+  .opt span{padding:6px 11px;font-size:12px;}
 }
 </style>
 </head>
@@ -396,7 +424,7 @@ footer.foot{
       </div>
       <div class="dash-actions">
         <button class="btn btn-ghost btn-small" onclick="backToPanelList()">← Torna ai Panel</button>
-        <button class="btn btn-ghost" onclick="exportPanel()">Esporta Panel (XML)</button>
+        <button class="btn btn-ghost" onclick="exportPanel()">Sottometti Panel</button>
       </div>
       <div id="cigarCardsHost" class="grid-cards"></div>
       <div id="cigarEmptyNote" class="empty-note hidden">Nessun sigaro assegnato a questo panel.</div>
@@ -553,12 +581,13 @@ footer.foot{
   <div id="exportModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;">
     <div style="background:var(--login-bg);color:var(--login-ink);max-width:720px;width:100%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);">
       <div style="padding:18px 22px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;">
-        <strong id="exportModalTitle" style="font-family:'Playfair Display',serif;font-size:16px;">Export XML</strong>
+        <strong id="exportModalTitle" style="font-family:'Playfair Display',serif;font-size:16px;">Sottometti Panel</strong>
         <button class="btn btn-small" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closeExportModal()">Chiudi</button>
       </div>
       <div style="padding:16px 22px;font-size:12.5px;color:#5a4632;">
         Il download automatico non è disponibile in questo ambiente. Copia il testo sotto e salvalo in un file con estensione <strong>.xml</strong>, oppure usa il pulsante "Scarica file".
       </div>
+      <div id="exportUploadStatus" style="padding:0 22px 12px;font-size:12.5px;font-weight:600;"></div>
       <textarea id="exportXmlContent" readonly style="flex:1;margin:0 22px 18px;background:#fff;color:#1c1712;border:1px solid #ccc;font-family:monospace;font-size:12px;min-height:280px;"></textarea>
       <div style="padding:0 22px 20px;display:flex;gap:12px;">
         <button class="btn btn-primary" onclick="copyExportXml()">Copia testo</button>
@@ -1456,6 +1485,14 @@ ${radioXml('considerazioni_finali', RADIO_GROUPS.finali, t.finali)}
 
 let _exportFilename = 'export.xml';
 
+function sanitizeFileNamePart(s){
+  return String(s||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')   // rimuove accenti
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,'_')                         // tutto il resto -> underscore
+    .replace(/^_+|_+$/g,'') || 'panelist';
+}
+
 async function exportPanel(){
   if(!currentPanel){ return; }
   const { data, error } = await sb
@@ -1469,10 +1506,36 @@ async function exportPanel(){
   const body = data.map(t => tasteToXml(t, currentPanel.numero, t.sigari.numero_sigaro)).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<schede_degustazione catador="${xmlEsc(currentUser.name)}" panel="${xmlEsc(currentPanel.numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}\n</schede_degustazione>`;
 
-  _exportFilename = 'panel_'+currentPanel.numero+'_'+currentUser.username+'.xml';
-  document.getElementById('exportModalTitle').textContent = 'Export XML — Panel ' + currentPanel.numero;
+  const namePart = sanitizeFileNamePart(currentUser.name);
+  _exportFilename = `panel_${currentPanel.numero}_${namePart}.xml`;
+
+  document.getElementById('exportModalTitle').textContent = 'Sottometti Panel ' + currentPanel.numero;
   document.getElementById('exportXmlContent').value = xml;
+  const statusEl = document.getElementById('exportUploadStatus');
+  statusEl.textContent = 'Caricamento sull\'archivio in corso…';
+  statusEl.style.color = '#5a4632';
   document.getElementById('exportModal').classList.remove('hidden');
+
+  // upload sull'archivio cloud (Supabase Storage) — un file per panel+panelist,
+  // sovrascritto ad ogni nuova sottomissione dello stesso panel
+  try{
+    const blob = new Blob([xml], {type:'application/xml'});
+    const { error: upErr } = await sb.storage
+      .from('panel-exports')
+      .upload(_exportFilename, blob, { upsert: true, contentType: 'application/xml' });
+    if(upErr){
+      statusEl.textContent = '⚠️ Caricamento sull\'archivio non riuscito: ' + upErr.message + ' (puoi comunque scaricare/copiare il file qui sotto).';
+      statusEl.style.color = '#b5202c';
+    } else {
+      statusEl.textContent = '✓ Caricato nell\'archivio come "' + _exportFilename + '".';
+      statusEl.style.color = '#2f7a3f';
+    }
+  }catch(err){
+    statusEl.textContent = '⚠️ Caricamento sull\'archivio non riuscito: ' + err.message;
+    statusEl.style.color = '#b5202c';
+  }
+
+  // tentativo di download locale, in aggiunta all'archiviazione cloud
   try{
     const blob = new Blob([xml], {type:'application/xml;charset=utf-8;'});
     const url = URL.createObjectURL(blob);

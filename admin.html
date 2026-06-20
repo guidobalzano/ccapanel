@@ -397,6 +397,8 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
   }
   .stato-row select{
     width:100%;
+    flex:none;
+    height:auto;
   }
   .stato-row button{
     width:100%;
@@ -469,6 +471,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <button class="tab-btn active" data-tab="panels" onclick="switchTab('panels')">Panel</button>
       <button class="tab-btn" data-tab="assign" onclick="switchTab('assign')">Assegnazioni</button>
       <button class="tab-btn" data-tab="export" onclick="switchTab('export')">Raccolta Export</button>
+      <button class="tab-btn" data-tab="archive" onclick="switchTab('archive')">Archivio XML</button>
       <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Panelist</button>
       <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Cambio Password</button>
     </div>
@@ -539,6 +542,20 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
         <button class="btn btn-ghost" onclick="exportPanelAll()">Esporta XML completo del Panel</button>
       </div>
       <div id="exportSummary" class="subtle" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- ===== TAB: ARCHIVIO XML ===== -->
+    <div id="tab-archive" class="admin-panel hidden">
+      <div class="section-title"><h2>Archivio XML — "Sottometti Panel"</h2><div class="rule"></div></div>
+      <div class="block-hint">File caricati automaticamente dai Panelist quando sottomettono un panel (naming: panel_numero_nome_cognome.xml).</div>
+      <div class="inline-form">
+        <button class="btn btn-ghost" onclick="loadArchiveTable()">↻ Aggiorna elenco</button>
+      </div>
+      <table class="admin-table">
+        <thead><tr><th>File</th><th>Dimensione</th><th>Caricato il</th><th>Azioni</th></tr></thead>
+        <tbody id="archiveTableBody"></tbody>
+      </table>
+      <div id="archiveEmptyNote" class="empty-note hidden">Nessun file ancora caricato.</div>
     </div>
 
     <!-- ===== TAB: PANELIST ===== -->
@@ -710,10 +727,11 @@ async function tryRestoreSession(){
    TABS
    ============================================================ */
 function switchTab(name){
-  ['panels','assign','export','users','password'].forEach(t=>{
+  ['panels','assign','export','archive','users','password'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
     document.querySelector('.tab-btn[data-tab="'+t+'"]').classList.toggle('active', t===name);
   });
+  if(name === 'archive'){ loadArchiveTable(); }
 }
 
 /* ============================================================
@@ -950,6 +968,71 @@ async function loadUsersTable(){
 async function populateExportSelector(){
   document.getElementById('ex-panel').innerHTML = _panelsCache
     .map(p=>`<option value="${p.numero}">Panel ${escapeHtml(p.numero)}</option>`).join('');
+}
+
+/* ============================================================
+   ARCHIVIO XML (Supabase Storage — bucket "panel-exports")
+   ============================================================ */
+function formatBytes(n){
+  if(n == null) return '—';
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+
+async function loadArchiveTable(){
+  const tbody = document.getElementById('archiveTableBody');
+  const empty = document.getElementById('archiveEmptyNote');
+  tbody.innerHTML = '<tr><td colspan="4">Caricamento…</td></tr>';
+
+  const { data, error } = await sb.storage.from('panel-exports').list('', {
+    limit: 200,
+    sortBy: { column: 'name', order: 'asc' }
+  });
+  if(error){
+    tbody.innerHTML = '<tr><td colspan="4">Errore nel caricamento dell\'archivio: ' + escapeHtml(error.message) + '</td></tr>';
+    return;
+  }
+
+  const files = (data || []).filter(f => f.name && f.name.endsWith('.xml'));
+  tbody.innerHTML = '';
+  empty.classList.toggle('hidden', files.length > 0);
+
+  files.forEach(f=>{
+    const sizeBytes = f.metadata && f.metadata.size ? f.metadata.size : null;
+    const updatedAt = f.updated_at || f.created_at;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="File">${escapeHtml(f.name)}</td>
+      <td data-label="Dimensione">${formatBytes(sizeBytes)}</td>
+      <td data-label="Caricato il">${formatDateTime(updatedAt)}</td>
+      <td data-label="Azioni">
+        <div class="row-actions">
+          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${f.name}')">Scarica</button>
+          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${f.name}')">Elimina</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function downloadArchiveFile(name){
+  const { data, error } = await sb.storage.from('panel-exports').download(name);
+  if(error){ alert('Errore nel download: ' + error.message); return; }
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
+function deleteArchiveFile(name){
+  askConfirm('Eliminare definitivamente il file "' + name + '" dall\'archivio?', async ()=>{
+    const { error } = await sb.storage.from('panel-exports').remove([name]);
+    if(error){ alert('Errore eliminazione: ' + error.message); return; }
+    await loadArchiveTable();
+  });
 }
 
 function xmlEsc(s){
