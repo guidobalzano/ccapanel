@@ -575,7 +575,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
             <option value="admin">Admin</option>
           </select>
         </div>
-        <div class="field"><label>Password iniziale</label><input type="text" id="np-password" placeholder="minimo 6 caratteri"></div>
+        <div class="field"><label>Password iniziale</label><input type="text" id="np-password" value="cca_panel_001$$" readonly style="opacity:.75;cursor:not-allowed;"></div>
         <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Panelist</button>
       </div>
 
@@ -622,6 +622,9 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     <!-- ===== TAB: CAMBIO PASSWORD ===== -->
     <div id="tab-password" class="admin-panel hidden">
       <div class="section-title"><h2>Cambio Password</h2><div class="rule"></div></div>
+      <div id="pw-forced-note" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid rgba(181,32,44,.4);color:#e3a3a3;font-size:13px;padding:12px 14px;border-radius:3px;margin-bottom:18px;">
+        Per motivi di sicurezza devi impostare una nuova password prima di continuare.
+      </div>
       <div class="block-hint">Cambia la password del tuo account amministratore attualmente collegato.</div>
       <div class="inline-form" style="max-width:420px;flex-direction:column;align-items:stretch;">
         <div class="field">
@@ -743,12 +746,27 @@ async function doLogin(){
   document.getElementById('loginShell').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('whoName').textContent = currentUser.name + ' (admin)';
-  await loadEverything();
+  if(profile.must_change_password){
+    enterForcedPasswordMode();
+  } else {
+    await loadEverything();
+  }
 }
 
 /* ============================================================
    CAMBIO PASSWORD (utente correntemente collegato)
    ============================================================ */
+let _forcedPasswordChange = false;
+
+function enterForcedPasswordMode(){
+  _forcedPasswordChange = true;
+  document.querySelector('.tabs').classList.add('hidden');
+  ['panels','assign','export','archive','users','password'].forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('hidden', t!=='password');
+  });
+  document.getElementById('pw-forced-note').classList.remove('hidden');
+}
+
 async function changeOwnPassword(){
   const pw1 = document.getElementById('pw-new').value;
   const pw2 = document.getElementById('pw-confirm').value;
@@ -762,6 +780,21 @@ async function changeOwnPassword(){
 
   const { error } = await sb.auth.updateUser({ password: pw1 });
   if(error){ err.textContent = 'Errore: ' + error.message; return; }
+
+  if(currentUser){
+    await sb.from('profiles').update({ must_change_password: false }).eq('id', currentUser.id);
+  }
+
+  if(_forcedPasswordChange){
+    _forcedPasswordChange = false;
+    document.getElementById('pw-forced-note').classList.add('hidden');
+    document.querySelector('.tabs').classList.remove('hidden');
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    switchTab('panels');
+    await loadEverything();
+    return;
+  }
 
   ok.textContent = 'Password aggiornata con successo.';
   document.getElementById('pw-new').value = '';
@@ -784,7 +817,11 @@ async function tryRestoreSession(){
   document.getElementById('loginShell').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('whoName').textContent = currentUser.name + ' (admin)';
-  await loadEverything();
+  if(profile.must_change_password){
+    enterForcedPasswordMode();
+  } else {
+    await loadEverything();
+  }
 }
 
 /* ============================================================
@@ -1091,8 +1128,8 @@ async function createPanelist(){
 
   try{
     await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password });
-    showAlert('Panelist creato con successo.');
-    ['np-nome','np-cognome','np-email','np-telefono','np-password'].forEach(id=>document.getElementById(id).value='');
+    showAlert('Panelist creato con successo. Dovrà cambiare la password al primo accesso.');
+    ['np-nome','np-cognome','np-email','np-telefono'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('np-role').value = 'degustatore';
     await loadUsersTable();
   }catch(err){

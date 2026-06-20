@@ -592,7 +592,10 @@ footer.foot{
   <!-- ===== PASSWORD MODAL ===== -->
   <div id="passwordModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1001;padding:20px;">
     <div style="background:var(--login-bg);color:var(--login-ink);max-width:420px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;">
-      <strong style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:18px;">Cambia Password</strong>
+      <strong id="pw-modal-title" style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:18px;">Cambia Password</strong>
+      <div id="pw-forced-note" class="hidden" style="background:rgba(181,32,44,.08);border:1px solid rgba(181,32,44,.3);color:#7a2a2a;font-size:13px;padding:10px 12px;border-radius:3px;margin-bottom:16px;">
+        Per motivi di sicurezza devi impostare una nuova password prima di continuare.
+      </div>
       <div class="field">
         <label style="color:var(--login-ink);">Nuova password</label>
         <input type="password" id="pw-new" style="background:#fff;color:#1c1712;border:1px solid #ccc;" placeholder="minimo 6 caratteri">
@@ -604,7 +607,7 @@ footer.foot{
       <div id="pw-err" style="color:#b5202c;font-weight:600;font-size:12.5px;min-height:14px;margin-bottom:8px;"></div>
       <div id="pw-ok" style="color:#3fae5c;font-weight:600;font-size:12.5px;min-height:14px;margin-bottom:8px;"></div>
       <div style="display:flex;gap:12px;justify-content:flex-end;">
-        <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closePasswordModal()">Annulla</button>
+        <button id="pw-cancel-btn" class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closePasswordModal()">Annulla</button>
         <button class="btn btn-primary" onclick="changeOwnPassword()">Aggiorna Password</button>
       </div>
     </div>
@@ -816,22 +819,48 @@ async function afterAuthSuccess(){
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('whoName').textContent = currentUser.name;
   document.getElementById('f-catador').value = currentUser.name;
+
+  if(profile.must_change_password){
+    openForcedPasswordChange();
+    return;
+  }
   await backToDashboard();
 }
 
 /* ============================================================
    CAMBIO PASSWORD (Panelist)
    ============================================================ */
+let _forcedPasswordChange = false;
+
 function openPasswordModal(){
+  _forcedPasswordChange = false;
+  document.getElementById('pw-modal-title').textContent = 'Cambia Password';
+  document.getElementById('pw-forced-note').classList.add('hidden');
+  document.getElementById('pw-cancel-btn').classList.remove('hidden');
   document.getElementById('pw-new').value = '';
   document.getElementById('pw-confirm').value = '';
   document.getElementById('pw-err').textContent = '';
   document.getElementById('pw-ok').textContent = '';
   document.getElementById('passwordModal').classList.remove('hidden');
 }
+
+function openForcedPasswordChange(){
+  _forcedPasswordChange = true;
+  document.getElementById('pw-modal-title').textContent = 'Imposta una nuova password';
+  document.getElementById('pw-forced-note').classList.remove('hidden');
+  document.getElementById('pw-cancel-btn').classList.add('hidden');
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-err').textContent = '';
+  document.getElementById('pw-ok').textContent = '';
+  document.getElementById('passwordModal').classList.remove('hidden');
+}
+
 function closePasswordModal(){
+  if(_forcedPasswordChange){ return; } // non si può chiudere finché non viene cambiata
   document.getElementById('passwordModal').classList.add('hidden');
 }
+
 async function changeOwnPassword(){
   const pw1 = document.getElementById('pw-new').value;
   const pw2 = document.getElementById('pw-confirm').value;
@@ -845,6 +874,17 @@ async function changeOwnPassword(){
 
   const { error } = await sb.auth.updateUser({ password: pw1 });
   if(error){ err.textContent = 'Errore: ' + error.message; return; }
+
+  if(currentUser){
+    await sb.from('profiles').update({ must_change_password: false }).eq('id', currentUser.id);
+  }
+
+  if(_forcedPasswordChange){
+    _forcedPasswordChange = false;
+    document.getElementById('passwordModal').classList.add('hidden');
+    await backToDashboard();
+    return;
+  }
 
   ok.textContent = 'Password aggiornata con successo.';
   document.getElementById('pw-new').value = '';
