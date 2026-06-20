@@ -561,10 +561,62 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     <!-- ===== TAB: PANELIST ===== -->
     <div id="tab-users" class="admin-panel hidden">
       <div class="section-title"><h2>Panelist registrati</h2><div class="rule"></div></div>
-      <table class="admin-table">
-        <thead><tr><th>Nome</th><th>Username</th><th>Ruolo</th><th>Registrato il</th></tr></thead>
+
+      <div class="block-hint">Aggiungi un nuovo Panelist (o admin) con email e password iniziali.</div>
+      <div class="inline-form">
+        <div class="field"><label>Nome</label><input type="text" id="np-nome" placeholder="es. Guido"></div>
+        <div class="field"><label>Cognome</label><input type="text" id="np-cognome" placeholder="es. Balzano"></div>
+        <div class="field"><label>Email</label><input type="email" id="np-email" placeholder="es. guido@esempio.it"></div>
+        <div class="field"><label>Telefono</label><input type="text" id="np-telefono" placeholder="opzionale"></div>
+        <div class="field">
+          <label>Ruolo</label>
+          <select id="np-role">
+            <option value="degustatore">Panelist</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field"><label>Password iniziale</label><input type="text" id="np-password" placeholder="minimo 6 caratteri"></div>
+        <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Panelist</button>
+      </div>
+
+      <table class="admin-table" style="margin-top:30px;">
+        <thead><tr><th>Nome</th><th>Email</th><th>Telefono</th><th>Ruolo</th><th>Registrato il</th><th>Azioni</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
       </table>
+
+      <div class="section-title" style="margin-top:50px;"><h2>Reset Password Rapido</h2><div class="rule"></div></div>
+      <div class="block-hint">Reimposta la password di un Panelist al valore di default: <strong>cca_panel_001$$</strong></div>
+      <div class="inline-form">
+        <div class="field">
+          <label>Panelist</label>
+          <select id="rp-utente"></select>
+        </div>
+        <button class="btn btn-danger" onclick="resetToDefaultPassword()">Resetta a Password Default</button>
+      </div>
+    </div>
+
+    <!-- ===== MODALE MODIFICA PANELIST ===== -->
+    <div id="editUserModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1003;padding:20px;">
+      <div style="background:var(--login-bg);color:var(--login-ink);max-width:460px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;max-height:85vh;overflow-y:auto;">
+        <strong style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:18px;">Modifica Panelist</strong>
+        <input type="hidden" id="eu-id">
+        <div class="field"><label>Nome</label><input type="text" id="eu-nome" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+        <div class="field"><label>Cognome</label><input type="text" id="eu-cognome" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+        <div class="field"><label>Email</label><input type="email" id="eu-email" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+        <div class="field"><label>Telefono</label><input type="text" id="eu-telefono" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+        <div class="field">
+          <label>Ruolo</label>
+          <select id="eu-role" style="background:#fff;color:#1c1712;border:1px solid #ccc;">
+            <option value="degustatore">Panelist</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div id="eu-err" style="color:#b5202c;font-weight:600;font-size:12.5px;min-height:14px;margin:6px 0 8px;"></div>
+        <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closeEditUserModal()">Annulla</button>
+          <button class="btn btn-primary" onclick="saveEditedUser()">Salva Modifiche</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===== TAB: CAMBIO PASSWORD ===== -->
@@ -601,6 +653,17 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     </div>
   </div>
 
+  <!-- ===== ALERT MODAL ===== -->
+  <div id="alertModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1002;padding:20px;">
+    <div style="background:var(--login-bg);color:var(--login-ink);max-width:420px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;">
+      <strong style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:14px;color:var(--red);">CCA Panel</strong>
+      <div id="alertModalText" style="font-size:15px;line-height:1.6;margin-bottom:22px;"></div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="closeAlertModal()">Ok</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== EXPORT MODAL ===== -->
   <div id="exportModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;">
     <div style="background:var(--login-bg);color:var(--login-ink);max-width:760px;width:100%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);">
@@ -623,7 +686,8 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
 <script>
 window.CCA_CONFIG = {
   SUPABASE_URL: 'https://bdmguivcpqdqakaextqd.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkbWd1aXZjcHFkcWFrYWV4dHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjczMDYsImV4cCI6MjA5NzQ0MzMwNn0.Sy0qyYcuC_Epo7r_HpfYibau7WYDztwSo7G9hbY5QMA',
+  ADMIN_USERS_FUNCTION_URL: 'https://bdmguivcpqdqakaextqd.supabase.co/functions/v1/admin-users'
 };
 </script>
 <script>
@@ -785,7 +849,7 @@ async function savePanel(panelId){
   const stato = sel ? sel.value : null;
   if(!stato) return;
   const { error } = await sb.from('panels').update({ stato }).eq('id', panelId);
-  if(error){ alert('Errore aggiornamento panel: ' + error.message); return; }
+  if(error){ showAlert('Errore aggiornamento panel: ' + error.message); return; }
   // ricarica per aggiornare anche il conteggio sigari mostrato
   await loadPanelsTable();
   await populateExportSelector();
@@ -793,9 +857,9 @@ async function savePanel(panelId){
 
 async function createPanel(){
   const numero = parseInt(document.getElementById('np-numero').value, 10);
-  if(!numero){ alert('Inserisci un numero di panel valido.'); return; }
+  if(!numero){ showAlert('Inserisci un numero di panel valido.'); return; }
   const { error } = await sb.from('panels').insert({ numero, stato:'da_avviare' });
-  if(error){ alert('Errore: ' + error.message); return; }
+  if(error){ showAlert('Errore: ' + error.message); return; }
   document.getElementById('np-numero').value = '';
   await loadPanelsTable();
   await populateAssignSelectors();
@@ -805,7 +869,7 @@ async function createPanel(){
 function deletePanel(panelId){
   askConfirm('Eliminare definitivamente questo panel e tutti i sigari/assegnazioni/schede collegate?', async ()=>{
     const { error } = await sb.from('panels').delete().eq('id', panelId);
-    if(error){ alert('Errore: ' + error.message); return; }
+    if(error){ showAlert('Errore: ' + error.message); return; }
     if(_selectedSigariPanelId === panelId){
       _selectedSigariPanelId = null;
       document.getElementById('sigariBlock').classList.add('hidden');
@@ -848,9 +912,9 @@ async function renderSigariTable(){
 
 async function addSigaro(){
   const numero_sigaro = document.getElementById('ns-numero').value.trim();
-  if(!numero_sigaro || !_selectedSigariPanelId){ alert('Inserisci un numero sigaro valido.'); return; }
+  if(!numero_sigaro || !_selectedSigariPanelId){ showAlert('Inserisci un numero sigaro valido.'); return; }
   const { error } = await sb.from('sigari').insert({ panel_id: _selectedSigariPanelId, numero_sigaro });
-  if(error){ alert('Errore: ' + error.message); return; }
+  if(error){ showAlert('Errore: ' + error.message); return; }
   document.getElementById('ns-numero').value = '';
   await renderSigariTable();
   await loadPanelsTable();
@@ -860,7 +924,7 @@ async function addSigaro(){
 function deleteSigaro(sigaroId){
   askConfirm('Eliminare questo sigaro? Verranno eliminate anche le assegnazioni e le schede collegate.', async ()=>{
     const { error } = await sb.from('sigari').delete().eq('id', sigaroId);
-    if(error){ alert('Errore: ' + error.message); return; }
+    if(error){ showAlert('Errore: ' + error.message); return; }
     await renderSigariTable();
     await loadPanelsTable();
     await populateAssignSelectors();
@@ -893,11 +957,11 @@ async function onAssignPanelChange(){
 async function createAssignment(){
   const sigaro_id = document.getElementById('as-sigaro').value;
   const utente_id = document.getElementById('as-utente').value;
-  if(!sigaro_id || !utente_id){ alert('Seleziona panel, sigaro e Panelist.'); return; }
+  if(!sigaro_id || !utente_id){ showAlert('Seleziona panel, sigaro e Panelist.'); return; }
   const { error } = await sb.from('assegnazioni').insert({ sigaro_id, utente_id });
   if(error){
-    if(String(error.message).includes('duplicate')) alert('Questo sigaro è già assegnato a questo Panelist.');
-    else alert('Errore: ' + error.message);
+    if(String(error.message).includes('duplicate')) showAlert('Questo sigaro è già assegnato a questo Panelist.');
+    else showAlert('Errore: ' + error.message);
     return;
   }
   await renderAssignTable();
@@ -935,7 +999,7 @@ async function renderAssignTable(){
 function deleteAssignment(id){
   askConfirm('Rimuovere questa assegnazione? La scheda eventualmente compilata resterà collegata fino a nuova assegnazione.', async ()=>{
     const { error } = await sb.from('assegnazioni').delete().eq('id', id);
-    if(error){ alert('Errore: ' + error.message); return; }
+    if(error){ showAlert('Errore: ' + error.message); return; }
     await renderAssignTable();
     await renderSigariTable();
   });
@@ -944,21 +1008,181 @@ function deleteAssignment(id){
 /* ============================================================
    PANELIST (sola lettura)
    ============================================================ */
+/* ============================================================
+   EDGE FUNCTION HELPER (operazioni privilegiate sugli utenti)
+   ============================================================ */
+async function callAdminUsersFunction(payload){
+  const { data: { session } } = await sb.auth.getSession();
+  if(!session){ throw new Error('Sessione non valida.'); }
+  const res = await fetch(window.CCA_CONFIG.ADMIN_USERS_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + session.access_token,
+    },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok || json.error){
+    throw new Error(json.error || ('Errore HTTP ' + res.status));
+  }
+  return json;
+}
+
+let _emailsById = {};
+
 async function loadUsersTable(){
   const { data, error } = await sb.from('profiles').select('*').order('full_name');
   if(error){ console.error(error); return; }
   _usersCache = data || [];
+
+  // recupera le email (richiede ruolo admin, vedi funzione SQL list_user_emails)
+  try{
+    const { data: emails, error: emErr } = await sb.rpc('list_user_emails');
+    if(!emErr && emails){
+      _emailsById = {};
+      emails.forEach(e=> _emailsById[e.id] = e.email);
+    }
+  }catch(e){ console.warn('Impossibile leggere le email:', e); }
+
   const tbody = document.getElementById('usersTableBody');
   tbody.innerHTML = '';
   _usersCache.forEach(u=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Nome">${escapeHtml(u.full_name)}</td>
-      <td data-label="Username">${escapeHtml(u.username)}</td>
+      <td data-label="Email">${escapeHtml(_emailsById[u.id] || '—')}</td>
+      <td data-label="Telefono">${escapeHtml(u.telefono || '—')}</td>
       <td data-label="Ruolo">${escapeHtml(u.role)}</td>
       <td data-label="Registrato il">${formatDateTime(u.created_at)}</td>
+      <td data-label="Azioni">
+        <div class="row-actions">
+          <button class="btn btn-small btn-ghost" onclick="openEditUserModal('${u.id}')">Modifica</button>
+          <button class="btn btn-small btn-danger" onclick="deletePanelist('${u.id}','${escapeHtml(u.full_name)}')">Elimina</button>
+        </div>
+      </td>
     `;
     tbody.appendChild(tr);
+  });
+
+  // popola il selettore per il reset password rapido
+  const rpSel = document.getElementById('rp-utente');
+  if(rpSel){
+    rpSel.innerHTML = _usersCache.map(u=>`<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(_emailsById[u.id]||u.username)})</option>`).join('');
+  }
+}
+
+async function createPanelist(){
+  const nome = document.getElementById('np-nome').value.trim();
+  const cognome = document.getElementById('np-cognome').value.trim();
+  const email = document.getElementById('np-email').value.trim();
+  const telefono = document.getElementById('np-telefono').value.trim();
+  const role = document.getElementById('np-role').value;
+  const password = document.getElementById('np-password').value;
+
+  if(!nome || !cognome || !email || !password){
+    showAlert('Compila almeno nome, cognome, email e password.');
+    return;
+  }
+  if(password.length < 6){
+    showAlert('La password deve avere almeno 6 caratteri.');
+    return;
+  }
+
+  try{
+    await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password });
+    showAlert('Panelist creato con successo.');
+    ['np-nome','np-cognome','np-email','np-telefono','np-password'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('np-role').value = 'degustatore';
+    await loadUsersTable();
+  }catch(err){
+    showAlert('Errore nella creazione: ' + err.message);
+  }
+}
+
+function openEditUserModal(userId){
+  const u = _usersCache.find(x=>x.id===userId);
+  if(!u) return;
+  document.getElementById('eu-id').value = u.id;
+  document.getElementById('eu-nome').value = u.nome || '';
+  document.getElementById('eu-cognome').value = u.cognome || '';
+  document.getElementById('eu-email').value = _emailsById[u.id] || '';
+  document.getElementById('eu-telefono').value = u.telefono || '';
+  document.getElementById('eu-role').value = u.role || 'degustatore';
+  document.getElementById('eu-err').textContent = '';
+  document.getElementById('editUserModal').classList.remove('hidden');
+}
+function closeEditUserModal(){
+  document.getElementById('editUserModal').classList.add('hidden');
+}
+
+async function saveEditedUser(){
+  const id = document.getElementById('eu-id').value;
+  const nome = document.getElementById('eu-nome').value.trim();
+  const cognome = document.getElementById('eu-cognome').value.trim();
+  const email = document.getElementById('eu-email').value.trim();
+  const telefono = document.getElementById('eu-telefono').value.trim();
+  const role = document.getElementById('eu-role').value;
+  const err = document.getElementById('eu-err');
+  err.textContent = '';
+
+  if(!nome || !cognome || !email){
+    err.textContent = 'Nome, cognome ed email sono obbligatori.';
+    return;
+  }
+
+  const full_name = nome + ' ' + cognome;
+  const original = _usersCache.find(x=>x.id===id);
+  const emailChanged = original && (_emailsById[id] || '') !== email;
+
+  // 1) campi normali: aggiornamento diretto sulla tabella profiles
+  const { error: updErr } = await sb.from('profiles')
+    .update({ nome, cognome, full_name, telefono: telefono || null, role })
+    .eq('id', id);
+  if(updErr){ err.textContent = 'Errore: ' + updErr.message; return; }
+
+  // 2) email: richiede l'Edge Function (operazione privilegiata su auth.users)
+  if(emailChanged){
+    try{
+      await callAdminUsersFunction({ action:'update_email', user_id:id, new_email:email });
+    }catch(e){
+      err.textContent = 'Profilo aggiornato, ma il cambio email non è riuscito: ' + e.message;
+      await loadUsersTable();
+      return;
+    }
+  }
+
+  closeEditUserModal();
+  showAlert('Panelist aggiornato con successo.');
+  await loadUsersTable();
+}
+
+function deletePanelist(userId, fullName){
+  askConfirm('Eliminare definitivamente l\'account di "' + fullName + '"? Verranno eliminate anche le sue schede e assegnazioni. Operazione irreversibile.', async ()=>{
+    try{
+      await callAdminUsersFunction({ action:'delete', user_id:userId });
+      showAlert('Account eliminato.');
+      await loadUsersTable();
+    }catch(err){
+      showAlert('Errore nell\'eliminazione: ' + err.message);
+    }
+  });
+}
+
+const DEFAULT_PASSWORD = 'cca_panel_001$$';
+
+function resetToDefaultPassword(){
+  const sel = document.getElementById('rp-utente');
+  const userId = sel.value;
+  const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+  if(!userId) return;
+  askConfirm('Reimpostare la password di ' + label + ' al valore di default "' + DEFAULT_PASSWORD + '"?', async ()=>{
+    try{
+      await callAdminUsersFunction({ action:'reset_password', user_id:userId, new_password: DEFAULT_PASSWORD });
+      showAlert('Password reimpostata al valore di default per ' + label + '.');
+    }catch(err){
+      showAlert('Errore nel reset password: ' + err.message);
+    }
   });
 }
 
@@ -1019,7 +1243,7 @@ async function loadArchiveTable(){
 
 async function downloadArchiveFile(name){
   const { data, error } = await sb.storage.from('panel-exports').download(name);
-  if(error){ alert('Errore nel download: ' + error.message); return; }
+  if(error){ showAlert('Errore nel download: ' + error.message); return; }
   const url = URL.createObjectURL(data);
   const a = document.createElement('a');
   a.href = url; a.download = name; a.style.display = 'none';
@@ -1030,7 +1254,7 @@ async function downloadArchiveFile(name){
 function deleteArchiveFile(name){
   askConfirm('Eliminare definitivamente il file "' + name + '" dall\'archivio?', async ()=>{
     const { error } = await sb.storage.from('panel-exports').remove([name]);
-    if(error){ alert('Errore eliminazione: ' + error.message); return; }
+    if(error){ showAlert('Errore eliminazione: ' + error.message); return; }
     await loadArchiveTable();
   });
 }
@@ -1085,14 +1309,14 @@ let _exportFilename = 'export.xml';
 
 async function exportPanelAll(){
   const panelNumero = document.getElementById('ex-panel').value;
-  if(!panelNumero){ alert('Seleziona un panel.'); return; }
+  if(!panelNumero){ showAlert('Seleziona un panel.'); return; }
   const { data, error } = await sb
     .from('schede_degustazione')
     .select('*, sigari!inner(numero_sigaro, panels!inner(numero)), profiles(full_name, username)')
     .eq('sigari.panels.numero', panelNumero);
-  if(error){ alert('Errore: ' + error.message); return; }
+  if(error){ showAlert('Errore: ' + error.message); return; }
   document.getElementById('exportSummary').textContent = (data||[]).length + ' schede trovate per il Panel ' + panelNumero + '.';
-  if(!data || data.length===0){ alert('Nessuna scheda compilata per questo panel.'); return; }
+  if(!data || data.length===0){ showAlert('Nessuna scheda compilata per questo panel.'); return; }
 
   const body = data.map(schedaToXmlFull).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<raccolta_schede panel="${xmlEsc(panelNumero)}" generato_il="${xmlEsc(new Date().toISOString())}" generato_da="${xmlEsc(currentUser.name)}">\n${body}\n</raccolta_schede>`;
@@ -1116,9 +1340,9 @@ function copyExportXml(){
   const ta = document.getElementById('exportXmlContent');
   ta.select();
   try{
-    navigator.clipboard.writeText(ta.value).then(()=>alert('XML copiato negli appunti.'))
-      .catch(()=>{ document.execCommand('copy'); alert('XML copiato negli appunti.'); });
-  }catch(e){ document.execCommand('copy'); alert('XML copiato negli appunti.'); }
+    navigator.clipboard.writeText(ta.value).then(()=>showAlert('XML copiato negli appunti.'))
+      .catch(()=>{ document.execCommand('copy'); showAlert('XML copiato negli appunti.'); });
+  }catch(e){ document.execCommand('copy'); showAlert('XML copiato negli appunti.'); }
 }
 function downloadExportXml(){
   try{
@@ -1129,12 +1353,20 @@ function downloadExportXml(){
     a.href = url; a.download = _exportFilename; a.style.display = 'none';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }catch(err){ alert('Download non disponibile: copia il testo manualmente con "Copia testo".'); }
+  }catch(err){ showAlert('Download non disponibile: copia il testo manualmente con "Copia testo".'); }
 }
 
 /* ============================================================
    CONFIRM MODAL
    ============================================================ */
+function showAlert(message){
+  document.getElementById('alertModalText').textContent = message;
+  document.getElementById('alertModal').classList.remove('hidden');
+}
+function closeAlertModal(){
+  document.getElementById('alertModal').classList.add('hidden');
+}
+
 function askConfirm(message, onAccept){
   document.getElementById('confirmModalText').textContent = message;
   _confirmCallback = onAccept;
