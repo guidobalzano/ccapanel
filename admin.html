@@ -385,7 +385,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
       <button class="tab-btn active" data-tab="panels" onclick="switchTab('panels')">Panel</button>
       <button class="tab-btn" data-tab="assign" onclick="switchTab('assign')">Assegnazioni</button>
       <button class="tab-btn" data-tab="export" onclick="switchTab('export')">Raccolta Export</button>
-      <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Degustatori</button>
+      <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Panelist</button>
       <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Cambio Password</button>
     </div>
 
@@ -420,7 +420,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
 
     <!-- ===== TAB: ASSEGNAZIONI ===== -->
     <div id="tab-assign" class="admin-panel hidden">
-      <div class="section-title"><h2>Assegna sigari ai degustatori</h2><div class="rule"></div></div>
+      <div class="section-title"><h2>Assegna sigari ai Panelist</h2><div class="rule"></div></div>
       <div class="inline-form">
         <div class="field">
           <label>Panel</label>
@@ -431,14 +431,14 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
           <select id="as-sigaro"></select>
         </div>
         <div class="field">
-          <label>Degustatore</label>
+          <label>Panelist</label>
           <select id="as-utente"></select>
         </div>
         <button class="btn btn-primary" onclick="createAssignment()">＋ Assegna</button>
       </div>
 
       <table class="admin-table">
-        <thead><tr><th>Panel</th><th>Sigaro n.</th><th>Degustatore</th><th>Stato scheda</th><th></th></tr></thead>
+        <thead><tr><th>Panel</th><th>Sigaro n.</th><th>Panelist</th><th>Stato scheda</th><th></th></tr></thead>
         <tbody id="assignTableBody"></tbody>
       </table>
     </div>
@@ -446,7 +446,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
     <!-- ===== TAB: EXPORT ===== -->
     <div id="tab-export" class="admin-panel hidden">
       <div class="section-title"><h2>Raccolta Export XML</h2><div class="rule"></div></div>
-      <div class="block-hint">Genera l'XML con tutte le schede compilate da tutti i degustatori per un determinato panel.</div>
+      <div class="block-hint">Genera l'XML con tutte le schede compilate da tutti i Panelist per un determinato panel.</div>
       <div class="inline-form">
         <div class="field">
           <label>Panel</label>
@@ -457,9 +457,9 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
       <div id="exportSummary" class="subtle" style="margin-top:10px;"></div>
     </div>
 
-    <!-- ===== TAB: DEGUSTATORI ===== -->
+    <!-- ===== TAB: PANELIST ===== -->
     <div id="tab-users" class="admin-panel hidden">
-      <div class="section-title"><h2>Degustatori registrati</h2><div class="rule"></div></div>
+      <div class="section-title"><h2>Panelist registrati</h2><div class="rule"></div></div>
       <table class="admin-table">
         <thead><tr><th>Nome</th><th>Username</th><th>Ruolo</th><th>Registrato il</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
@@ -765,8 +765,8 @@ async function populateAssignSelectors(){
 
   const exSel = panelSel; // placeholder, gestito separatamente sotto
   const utenteSel = document.getElementById('as-utente');
-  utenteSel.innerHTML = _usersCache.filter(u=>u.role==='degustatore')
-    .map(u=>`<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.username)})</option>`).join('');
+  utenteSel.innerHTML = _usersCache
+    .map(u=>`<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.username)}${u.role==='admin'?' · admin':''})</option>`).join('');
 
   await renderAssignTable();
 }
@@ -781,10 +781,10 @@ async function onAssignPanelChange(){
 async function createAssignment(){
   const sigaro_id = document.getElementById('as-sigaro').value;
   const utente_id = document.getElementById('as-utente').value;
-  if(!sigaro_id || !utente_id){ alert('Seleziona panel, sigaro e degustatore.'); return; }
+  if(!sigaro_id || !utente_id){ alert('Seleziona panel, sigaro e Panelist.'); return; }
   const { error } = await sb.from('assegnazioni').insert({ sigaro_id, utente_id });
   if(error){
-    if(String(error.message).includes('duplicate')) alert('Questo sigaro è già assegnato a questo degustatore.');
+    if(String(error.message).includes('duplicate')) alert('Questo sigaro è già assegnato a questo Panelist.');
     else alert('Errore: ' + error.message);
     return;
   }
@@ -830,7 +830,7 @@ function deleteAssignment(id){
 }
 
 /* ============================================================
-   DEGUSTATORI (sola lettura)
+   PANELIST (sola lettura)
    ============================================================ */
 async function loadUsersTable(){
   const { data, error } = await sb.from('profiles').select('*').order('full_name');
@@ -851,7 +851,7 @@ async function loadUsersTable(){
 }
 
 /* ============================================================
-   EXPORT — raccolta XML di tutti i degustatori per un Panel
+   EXPORT — raccolta XML di tutti i Panelist per un Panel
    ============================================================ */
 async function populateExportSelector(){
   document.getElementById('ex-panel').innerHTML = _panelsCache
@@ -875,7 +875,7 @@ function schedaToXmlFull(t){
   return `  <scheda id="${xmlEsc(t.id)}">
     <panel>${xmlEsc(t.sigari?.panels?.numero)}</panel>
     <sigaro>${xmlEsc(t.sigari?.numero_sigaro)}</sigaro>
-    <degustatore>${xmlEsc(t.profiles?.full_name)}</degustatore>
+    <panelist>${xmlEsc(t.profiles?.full_name)}</panelist>
     <username>${xmlEsc(t.profiles?.username)}</username>
     <data>${xmlEsc(t.data)}</data>
     <sentori_a_crudo>${xmlEsc(t.sentori_crudo)}</sentori_a_crudo>
