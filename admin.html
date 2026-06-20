@@ -386,6 +386,7 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
       <button class="tab-btn" data-tab="assign" onclick="switchTab('assign')">Assegnazioni</button>
       <button class="tab-btn" data-tab="export" onclick="switchTab('export')">Raccolta Export</button>
       <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Degustatori</button>
+      <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Cambio Password</button>
     </div>
 
     <!-- ===== TAB: PANEL & SIGARI ===== -->
@@ -463,6 +464,25 @@ table.admin-table select, table.admin-table input{padding:7px 9px;font-size:13px
         <thead><tr><th>Nome</th><th>Username</th><th>Ruolo</th><th>Registrato il</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
       </table>
+    </div>
+
+    <!-- ===== TAB: CAMBIO PASSWORD ===== -->
+    <div id="tab-password" class="admin-panel hidden">
+      <div class="section-title"><h2>Cambio Password</h2><div class="rule"></div></div>
+      <div class="block-hint">Cambia la password del tuo account amministratore attualmente collegato.</div>
+      <div class="inline-form" style="max-width:420px;flex-direction:column;align-items:stretch;">
+        <div class="field">
+          <label>Nuova password</label>
+          <input type="password" id="pw-new" placeholder="minimo 6 caratteri">
+        </div>
+        <div class="field">
+          <label>Conferma nuova password</label>
+          <input type="password" id="pw-confirm" placeholder="ripeti la password">
+        </div>
+        <div class="err" id="pw-err" style="min-height:14px;"></div>
+        <div class="err" id="pw-ok" style="min-height:14px;color:#3fae5c;"></div>
+        <button class="btn btn-primary" style="align-self:flex-start;" onclick="changeOwnPassword()">Aggiorna Password</button>
+      </div>
     </div>
 
   </div>
@@ -561,6 +581,28 @@ async function doLogin(){
   await loadEverything();
 }
 
+/* ============================================================
+   CAMBIO PASSWORD (utente correntemente collegato)
+   ============================================================ */
+async function changeOwnPassword(){
+  const pw1 = document.getElementById('pw-new').value;
+  const pw2 = document.getElementById('pw-confirm').value;
+  const err = document.getElementById('pw-err');
+  const ok = document.getElementById('pw-ok');
+  err.textContent = ''; ok.textContent = '';
+
+  if(!pw1 || !pw2){ err.textContent = 'Compila entrambi i campi.'; return; }
+  if(pw1.length < 6){ err.textContent = 'La password deve avere almeno 6 caratteri.'; return; }
+  if(pw1 !== pw2){ err.textContent = 'Le due password non coincidono.'; return; }
+
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  if(error){ err.textContent = 'Errore: ' + error.message; return; }
+
+  ok.textContent = 'Password aggiornata con successo.';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+}
+
 async function logout(){
   await sb.auth.signOut();
   currentUser = null;
@@ -584,7 +626,7 @@ async function tryRestoreSession(){
    TABS
    ============================================================ */
 function switchTab(name){
-  ['panels','assign','export','users'].forEach(t=>{
+  ['panels','assign','export','users','password'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
     document.querySelector('.tab-btn[data-tab="'+t+'"]').classList.toggle('active', t===name);
   });
