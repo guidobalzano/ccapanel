@@ -1375,7 +1375,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         <div id="esitoChartHost" style="width:100%;box-sizing:border-box;"></div>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-top:22px;">
+      <div style="display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start;margin-top:22px;">
         <div style="text-align:center;">
           <div class="subtle" id="esitoScoreLabel">Score</div>
           <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
@@ -1385,14 +1385,17 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
           <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
           <div class="subtle" id="esitoPunteggioRange"></div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
-            <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Gaussiana
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
-            <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Totale
-          </label>
-        </div>
+      </div>
+
+      <div style="margin-top:18px;font-size:13.5px;">
+        <label style="display:block;margin-bottom:10px;cursor:pointer;">
+          <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()">
+          Media Gaussiana
+        </label>
+        <label style="display:block;cursor:pointer;">
+          <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()">
+          Media Totale
+        </label>
       </div>
 
       <div style="margin-top:34px;">
@@ -1473,17 +1476,23 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
   if(!chartHost) return;
 
   const W = 600, H = 200, padX = 26, padTop = 28, padBottom = 30;
-  const minScore = Math.min(...panelisti.map(p=>p.punteggio), mean) - 3;
-  const maxScore = Math.max(...panelisti.map(p=>p.punteggio), mean) + 3;
-  const range = Math.max(1, maxScore - minScore);
-  const xFor = (v) => padX + (v - minScore) / range * (W - padX*2);
   const baseline = H - padBottom;
   const curveTop = padTop + 6;
 
-  const sigma = Math.max(4, range / 5);
+  // Dominio SIMMETRICO rispetto alla media: la media è sempre
+  // esattamente al centro del grafico, qualunque sia la distribuzione
+  // dei punteggi. Il margine garantisce che la curva torni vicino alla
+  // base anche ai bordi (niente tagli).
+  const maxDist = Math.max(...panelisti.map(p => Math.abs(p.punteggio - mean)), 5);
+  const halfRange = maxDist + 6;
+  const domainMin = mean - halfRange;
+  const domainMax = mean + halfRange;
+  const xFor = (v) => padX + (v - domainMin) / (2 * halfRange) * (W - padX*2);
+  const sigma = halfRange / 3; // a 3 sigma dal centro la curva è già quasi a zero
+
   let path = '';
   for(let x=0; x<=W; x+=4){
-    const score = minScore + (x/W) * range;
+    const score = domainMin + (x/W) * (2 * halfRange);
     const y = baseline - (baseline - curveTop) * Math.exp(-((score-mean)*(score-mean))/(2*sigma*sigma));
     path += (x===0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
   }
