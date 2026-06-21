@@ -424,8 +424,9 @@ footer.foot{
       </div>
       <div class="dash-actions">
         <button class="btn btn-ghost btn-small" onclick="backToPanelList()">← Torna ai Panel</button>
-        <button class="btn btn-ghost" onclick="exportPanel()">Sottometti Panel</button>
+        <button class="btn btn-ghost" id="submitPanelBtn" onclick="exportPanel()">Sottometti Panel</button>
       </div>
+      <div id="panelSubmittedNote" class="hidden" style="margin:-6px 0 16px;color:#3fae5c;font-size:13px;font-weight:600;">✓ Panel già sottomesso — le schede sono ora di sola lettura.</div>
       <div id="cigarCardsHost" class="grid-cards"></div>
       <div id="cigarEmptyNote" class="empty-note hidden">Nessun sigaro assegnato a questo panel.</div>
     </div>
@@ -1127,10 +1128,29 @@ async function backToPanelList(){
   await backToDashboard();
 }
 
+let _currentPanelSubmitted = false;
+
+async function isPanelSubmitted(panelNumero){
+  const fileName = `panel_${panelNumero}_${sanitizeFileNamePart(currentUser.name)}.xml`;
+  try{
+    const { data, error } = await sb.storage.from('panel-exports').list('', { limit: 1000 });
+    if(error) return false;
+    return (data || []).some(f => f.name === fileName);
+  }catch(e){ return false; }
+}
+
 async function renderPanelDetail(){
   const host = document.getElementById('cigarCardsHost');
   const empty = document.getElementById('cigarEmptyNote');
   host.innerHTML = '<div class="empty-note">Caricamento sigari…</div>';
+
+  _currentPanelSubmitted = await isPanelSubmitted(currentPanel.numero);
+
+  const submitBtn = document.getElementById('submitPanelBtn');
+  const submittedNote = document.getElementById('panelSubmittedNote');
+  submitBtn.classList.toggle('hidden', _currentPanelSubmitted);
+  submittedNote.classList.toggle('hidden', !_currentPanelSubmitted);
+
   const list = await loadMyAssignedSigari(currentPanel.numero);
   _myAssignedCache = list;
   host.innerHTML = '';
@@ -1141,30 +1161,41 @@ async function renderPanelDetail(){
     const card = document.createElement('div');
     card.className = 'card';
     card.style.cursor = 'pointer';
+
+    let actionsHtml;
+    if(existing){
+      actionsHtml = `<button class="btn btn-small btn-ghost" data-act="view">Apri scheda</button>` +
+        (_currentPanelSubmitted ? '' : `<button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>`);
+    } else if(_currentPanelSubmitted){
+      actionsHtml = `<span class="subtle">Panel già sottomesso</span>`;
+    } else {
+      actionsHtml = `<button class="btn btn-small btn-primary" data-act="new">Inizia degustazione</button>`;
+    }
+
     card.innerHTML = `
       <div class="cig-no">Sigaro n. ${escapeHtml(row.numero_sigaro)}</div>
       <div class="cig-date">${existing ? 'Degustato il ' + formatDate(row.data) : 'Da degustare'}</div>
       <div class="score">${existing && row.punteggio ? row.punteggio : ''}</div>
-      <div class="meta">${existing ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento') : 'Clicca per avviare la scheda di degustazione'}</div>
-      <div class="card-actions">
-        ${existing
-          ? `<button class="btn btn-small btn-ghost" data-act="view">Apri scheda</button><button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>`
-          : `<button class="btn btn-small btn-primary" data-act="new">Inizia degustazione</button>`}
-      </div>
+      <div class="meta">${existing ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento') : (_currentPanelSubmitted ? 'Panel già sottomesso' : 'Clicca per avviare la scheda di degustazione')}</div>
+      <div class="card-actions">${actionsHtml}</div>
     `;
     if(existing){
       card.querySelector('[data-act="view"]').onclick = (e)=>{ e.stopPropagation(); detailOrigin='panelDetail'; openDetail(row.scheda_id); };
-      card.querySelector('[data-act="edit"]').onclick = (e)=>{ e.stopPropagation(); formOrigin='panelDetail'; openEdit(row.scheda_id, row.sigaro_id); };
+      const editBtn = card.querySelector('[data-act="edit"]');
+      if(editBtn){ editBtn.onclick = (e)=>{ e.stopPropagation(); formOrigin='panelDetail'; openEdit(row.scheda_id, row.sigaro_id); }; }
       card.onclick = ()=>{ detailOrigin='panelDetail'; openDetail(row.scheda_id); };
-    } else {
+    } else if(!_currentPanelSubmitted){
       card.querySelector('[data-act="new"]').onclick = (e)=>{ e.stopPropagation(); newTastingForCigar(row); };
       card.onclick = ()=>newTastingForCigar(row);
+    } else {
+      card.style.cursor = 'default';
     }
     host.appendChild(card);
   });
 }
 
 function newTastingForCigar(row){
+  if(_currentPanelSubmitted){ showAlert('Questo panel è già stato sottomesso: non è più possibile avviare nuove degustazioni.'); return; }
   currentEditId = null;
   formOrigin = 'panelDetail';
   resetForm();
@@ -1332,6 +1363,12 @@ async function saveTasting(){
    ============================================================ */
 function deleteTasting(id){
   askConfirm('Eliminare definitivamente questa scheda? Il sigaro tornerà disponibile come "Da degustare" nel suo panel.', async ()=>{
+    const { data: t } = await sb.from('schede_degustazione').select('sigari(panels(numero))').eq('id', id).single();
+    const panelNum = t && t.sigari && t.sigari.panels ? t.sigari.panels.numero : null;
+    if(panelNum && await isPanelSubmitted(panelNum)){
+      showAlert('Questo panel è già stato sottomesso: non è più possibile eliminare la scheda.');
+      return;
+    }
     const { error } = await sb.from('schede_degustazione').delete().eq('id', id);
     if(error){ showAlert('Errore eliminazione: ' + error.message); return; }
     if(currentPanel && !document.getElementById('panelDetailView').classList.contains('hidden')){
@@ -1344,6 +1381,12 @@ function deleteTasting(id){
 function deleteCurrentFromDetail(){
   if(!currentDetailId) return;
   askConfirm('Eliminare definitivamente questa scheda? Il sigaro tornerà disponibile come "Da degustare" nel suo panel.', async ()=>{
+    const { data: t } = await sb.from('schede_degustazione').select('sigari(panels(numero))').eq('id', currentDetailId).single();
+    const panelNum = t && t.sigari && t.sigari.panels ? t.sigari.panels.numero : null;
+    if(panelNum && await isPanelSubmitted(panelNum)){
+      showAlert('Questo panel è già stato sottomesso: non è più possibile eliminare la scheda.');
+      return;
+    }
     const { error } = await sb.from('schede_degustazione').delete().eq('id', currentDetailId);
     if(error){ showAlert('Errore eliminazione: ' + error.message); return; }
     if(detailOrigin === 'panelDetail' && currentPanel){
@@ -1361,6 +1404,18 @@ function deleteCurrentFromDetail(){
 async function openEdit(id, sigaroId){
   const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero))').eq('id', id).single();
   if(error || !t){ showAlert('Scheda non trovata.'); return; }
+
+  const panelNum = t.sigari && t.sigari.panels ? t.sigari.panels.numero : null;
+  if(panelNum){
+    const submitted = await isPanelSubmitted(panelNum);
+    if(submitted){
+      showAlert('Questo panel è già stato sottomesso: la scheda è ora di sola lettura.');
+      detailOrigin = formOrigin;
+      openDetail(id);
+      return;
+    }
+  }
+
   currentEditId = id;
   resetForm();
   document.getElementById('formView').dataset.sigaroId = sigaroId || t.sigaro_id;

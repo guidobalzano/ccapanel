@@ -1238,32 +1238,42 @@ async function onEsitoPanelChange(){
 
   note.textContent = 'Caricamento report…';
   const fileName = `report_panel_${numero}.xml`;
-  const { data, error } = await sb.storage.from('panel-exports').download(fileName);
-  if(error){
-    note.textContent = 'Nessun report trovato per questo panel. Generalo prima dal tab "Archivio Sottomissioni".';
-    return;
+
+  try{
+    const downloadPromise = sb.storage.from('panel-exports').download(fileName);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(()=>reject(new Error('Timeout: il server non ha risposto entro 15 secondi.')), 15000));
+    const { data, error } = await Promise.race([downloadPromise, timeoutPromise]);
+
+    if(error){
+      note.textContent = 'Nessun report trovato per questo panel ("' + fileName + '"). Generalo prima dal tab "Archivio Sottomissioni". Dettaglio: ' + error.message;
+      return;
+    }
+    const text = await data.text();
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if(doc.getElementsByTagName('parsererror').length > 0){
+      note.textContent = 'Il report di questo panel non è leggibile (XML non valido). Rigeneralo.';
+      console.error('XML non valido, contenuto:', text.slice(0, 500));
+      return;
+    }
+    _esitoReportDoc = doc;
+    const sigari = Array.from(doc.getElementsByTagName('sigaro'));
+    if(sigari.length === 0){
+      note.textContent = 'Il report non contiene sigari con schede compilate.';
+      return;
+    }
+    const numeri = sigari.map(s=>s.getAttribute('numero')).sort((a,b)=>{
+      const na=parseInt(a,10), nb=parseInt(b,10);
+      if(!isNaN(na) && !isNaN(nb)) return na-nb;
+      return a.localeCompare(b);
+    });
+    sigaroSel.innerHTML = '<option value="">— seleziona —</option>' +
+      numeri.map(n=>`<option value="${escapeHtml(n)}">Sigaro ${escapeHtml(n)}</option>`).join('');
+    sigaroSel.disabled = false;
+    note.textContent = '';
+  }catch(err){
+    console.error('Errore in onEsitoPanelChange:', err);
+    note.textContent = 'Errore nel caricamento del report: ' + err.message;
   }
-  const text = await data.text();
-  const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if(doc.getElementsByTagName('parsererror').length > 0){
-    note.textContent = 'Il report di questo panel non è leggibile (XML non valido). Rigeneralo.';
-    return;
-  }
-  _esitoReportDoc = doc;
-  const sigari = Array.from(doc.getElementsByTagName('sigaro'));
-  if(sigari.length === 0){
-    note.textContent = 'Il report non contiene sigari con schede compilate.';
-    return;
-  }
-  const numeri = sigari.map(s=>s.getAttribute('numero')).sort((a,b)=>{
-    const na=parseInt(a,10), nb=parseInt(b,10);
-    if(!isNaN(na) && !isNaN(nb)) return na-nb;
-    return a.localeCompare(b);
-  });
-  sigaroSel.innerHTML = '<option value="">— seleziona —</option>' +
-    numeri.map(n=>`<option value="${escapeHtml(n)}">Sigaro ${escapeHtml(n)}</option>`).join('');
-  sigaroSel.disabled = false;
-  note.textContent = '';
 }
 
 function onEsitoSigaroChange(){
