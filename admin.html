@@ -1370,31 +1370,28 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         </table>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start;margin-top:30px;">
-        <div style="flex:1 1 320px;min-width:280px;">
-          <div class="block-title cap" style="margin-bottom:14px;">Distribuzione Punteggi</div>
-          <div id="esitoChartHost"></div>
+      <div style="margin-top:30px;width:100%;box-sizing:border-box;">
+        <div class="block-title cap" style="margin-bottom:14px;">Distribuzione Punteggi</div>
+        <div id="esitoChartHost" style="width:100%;box-sizing:border-box;"></div>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-top:22px;">
+        <div style="text-align:center;">
+          <div class="subtle" id="esitoScoreLabel">Score</div>
+          <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
         </div>
-        <div style="flex:0 0 auto;">
-          <div style="display:flex;gap:14px;">
-            <div style="text-align:center;">
-              <div class="subtle" id="esitoScoreLabel">Score</div>
-              <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
-            </div>
-            <div style="text-align:center;">
-              <div class="subtle">Punteggio</div>
-              <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
-              <div class="subtle" id="esitoPunteggioRange"></div>
-            </div>
-          </div>
-          <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;font-size:13px;">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
-              <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Gaussiana
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
-              <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Totale
-            </label>
-          </div>
+        <div style="text-align:center;">
+          <div class="subtle">Punteggio</div>
+          <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
+          <div class="subtle" id="esitoPunteggioRange"></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
+            <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Gaussiana
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;">
+            <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()" style="flex:none;margin:0;"> Media Totale
+          </label>
         </div>
       </div>
 
