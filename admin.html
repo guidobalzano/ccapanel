@@ -544,6 +544,15 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <div class="inline-form">
         <button class="btn btn-ghost" onclick="loadArchiveTable()">↻ Aggiorna elenco</button>
       </div>
+
+      <div class="section-title" style="margin-top:36px;"><h2 style="font-size:18px;">Report Unici Generati</h2><div class="rule"></div></div>
+      <table class="admin-table" style="margin-top:14px;">
+        <thead><tr><th>Panel</th><th>File</th><th>Generato il</th><th>Azioni</th></tr></thead>
+        <tbody id="reportsOverviewBody"></tbody>
+      </table>
+      <div id="reportsOverviewEmpty" class="empty-note hidden">Nessun report unico generato finora.</div>
+
+      <div class="section-title" style="margin-top:40px;"><h2 style="font-size:18px;">Sottomissioni per Panel</h2><div class="rule"></div></div>
       <div id="archiveByPanelHost"></div>
       <div id="archiveEmptyNote" class="empty-note hidden">Nessun panel con sigari assegnati.</div>
     </div>
@@ -1085,7 +1094,7 @@ async function loadUsersTable(){
       <td data-label="Azioni">
         <div class="row-actions">
           <button class="btn btn-small btn-ghost" onclick="openEditUserModal('${u.id}')">Modifica</button>
-          <button class="btn btn-small btn-danger" onclick="deletePanelist('${u.id}','${escapeHtml(u.full_name)}')">Elimina</button>
+          <button class="btn btn-small btn-danger" onclick="deletePanelist('${u.id}')">Elimina</button>
         </div>
       </td>
     `;
@@ -1184,7 +1193,9 @@ async function saveEditedUser(){
   await loadUsersTable();
 }
 
-function deletePanelist(userId, fullName){
+function deletePanelist(userId){
+  const u = _usersCache.find(x=>x.id===userId);
+  const fullName = u ? u.full_name : 'questo utente';
   askConfirm('Eliminare definitivamente l\'account di "' + fullName + '"? Verranno eliminate anche le sue schede e assegnazioni. Operazione irreversibile.', async ()=>{
     try{
       await callAdminUsersFunction({ action:'delete', user_id:userId });
@@ -1693,6 +1704,40 @@ function sanitizeFileNamePart(s){
     .replace(/^_+|_+$/g,'') || 'panelist';
 }
 
+function renderReportsOverview(fileMap){
+  const tbody = document.getElementById('reportsOverviewBody');
+  const empty = document.getElementById('reportsOverviewEmpty');
+  const reportFiles = Object.values(fileMap)
+    .filter(f => f.name && /^report_panel_.+\.xml$/.test(f.name))
+    .sort((a,b) => {
+      const na = parseInt((a.name.match(/^report_panel_(\d+)/)||[])[1], 10);
+      const nb = parseInt((b.name.match(/^report_panel_(\d+)/)||[])[1], 10);
+      if(!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.name.localeCompare(b.name);
+    });
+
+  tbody.innerHTML = '';
+  empty.classList.toggle('hidden', reportFiles.length > 0);
+
+  reportFiles.forEach(f=>{
+    const numeroMatch = f.name.match(/^report_panel_(.+)\.xml$/);
+    const numero = numeroMatch ? numeroMatch[1] : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="Panel">Panel ${escapeHtml(numero)}</td>
+      <td data-label="File">${escapeHtml(f.name)}</td>
+      <td data-label="Generato il">${formatDateTime(f.updated_at || f.created_at)}</td>
+      <td data-label="Azioni">
+        <div class="row-actions">
+          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${escapeHtml(f.name)}')">Scarica</button>
+          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${escapeHtml(f.name)}')">Elimina</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 async function loadArchiveTable(){
   const host = document.getElementById('archiveByPanelHost');
   const empty = document.getElementById('archiveEmptyNote');
@@ -1706,6 +1751,8 @@ async function loadArchiveTable(){
   }
   const fileMap = {};
   (files || []).forEach(f=>{ if(f.name) fileMap[f.name] = f; });
+
+  renderReportsOverview(fileMap);
 
   // 2) panel disponibili
   let panels = _panelsCache;
