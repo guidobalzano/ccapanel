@@ -1256,7 +1256,7 @@ async function onEsitoPanelChange(){
       return;
     }
     _esitoReportDoc = doc;
-    const sigari = Array.from(doc.getElementsByTagName('sigaro'));
+    const sigari = Array.from(doc.getElementsByTagName('gruppo_sigaro'));
     if(sigari.length === 0){
       note.textContent = 'Il report non contiene sigari con schede compilate.';
       return;
@@ -1282,7 +1282,7 @@ function onEsitoSigaroChange(){
   host.innerHTML = '';
   if(!sigaroNum || !_esitoReportDoc) return;
 
-  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNum);
   if(!sigaroEl){ host.innerHTML = '<div class="empty-note">Sigaro non trovato nel report.</div>'; return; }
 
@@ -1400,7 +1400,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
 
   renderEsitoChart(panelisti, minP, maxP, trimmedAvg);
 
-  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
   if(sigaroEl){
     const itaEl = sigaroEl.getElementsByTagName('valutazione_globale_ita')[0];
@@ -1463,7 +1463,7 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
 }
 
 function estraiPanelistiSigaro(sigaroNumero){
-  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
   if(!sigaroEl) return [];
   const panelistEls = Array.from(sigaroEl.getElementsByTagName('panelist'));
@@ -1566,7 +1566,7 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   const eng = document.getElementById('esitoValEng').value;
   const status = document.getElementById('esitoValStatus');
 
-  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
   if(!sigaroEl){ status.textContent = 'Errore: sigaro non trovato nel report.'; return; }
 
@@ -1761,11 +1761,11 @@ async function generatePanelReport(panelId){
 
   let body = '';
   sigariSorted.forEach(sigaroNum=>{
-    body += `  <sigaro numero="${xmlEsc(sigaroNum)}">\n`;
+    body += `  <gruppo_sigaro numero="${xmlEsc(sigaroNum)}">\n`;
     sigaroMap[sigaroNum].forEach(item=>{
       body += `    <panelist nome="${xmlEsc(item.panelist)}">\n      ${item.schedaXml}\n    </panelist>\n`;
     });
-    body += `  </sigaro>\n`;
+    body += `  </gruppo_sigaro>\n`;
   });
 
   const reportXml = `<?xml version="1.0" encoding="UTF-8"?>\n<report_panel numero="${xmlEsc(numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}</report_panel>`;
