@@ -470,8 +470,8 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     <div class="tabs">
       <button class="tab-btn active" data-tab="panels" onclick="switchTab('panels')">Panel</button>
       <button class="tab-btn" data-tab="assign" onclick="switchTab('assign')">Assegnazioni</button>
-      <button class="tab-btn" data-tab="export" onclick="switchTab('export')">Raccolta Export</button>
-      <button class="tab-btn" data-tab="archive" onclick="switchTab('archive')">Archivio XML</button>
+      <button class="tab-btn" data-tab="export" onclick="switchTab('export')">Esito Panel</button>
+      <button class="tab-btn" data-tab="archive" onclick="switchTab('archive')">Archivio Sottomissioni</button>
       <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Panelist</button>
       <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Cambio Password</button>
     </div>
@@ -532,30 +532,31 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
 
     <!-- ===== TAB: EXPORT ===== -->
     <div id="tab-export" class="admin-panel hidden">
-      <div class="section-title"><h2>Raccolta Export XML</h2><div class="rule"></div></div>
-      <div class="block-hint">Genera l'XML con tutte le schede compilate da tutti i Panelist per un determinato panel.</div>
+      <div class="section-title"><h2>Esito Panel</h2><div class="rule"></div></div>
+      <div class="block-hint">Seleziona un panel e un sigaro per vedere l'analisi comparativa dei Panelist. Richiede che il report unico sia già stato generato dal tab "Archivio Sottomissioni".</div>
       <div class="inline-form">
         <div class="field">
           <label>Panel</label>
-          <select id="ex-panel"></select>
+          <select id="es-panel" onchange="onEsitoPanelChange()"></select>
         </div>
-        <button class="btn btn-ghost" onclick="exportPanelAll()">Esporta XML completo del Panel</button>
+        <div class="field">
+          <label>Sigaro</label>
+          <select id="es-sigaro" onchange="onEsitoSigaroChange()" disabled></select>
+        </div>
       </div>
-      <div id="exportSummary" class="subtle" style="margin-top:10px;"></div>
+      <div id="esitoStatusNote" class="block-hint"></div>
+      <div id="esitoAnalysisHost" style="margin-top:10px;"></div>
     </div>
 
     <!-- ===== TAB: ARCHIVIO XML ===== -->
     <div id="tab-archive" class="admin-panel hidden">
-      <div class="section-title"><h2>Archivio XML — "Sottometti Panel"</h2><div class="rule"></div></div>
-      <div class="block-hint">File caricati automaticamente dai Panelist quando sottomettono un panel (naming: panel_numero_nome_cognome.xml).</div>
+      <div class="section-title"><h2>Archivio Sottomissioni</h2><div class="rule"></div></div>
+      <div class="block-hint">Per ogni panel, stato di sottomissione di ciascun Panelist assegnato.</div>
       <div class="inline-form">
         <button class="btn btn-ghost" onclick="loadArchiveTable()">↻ Aggiorna elenco</button>
       </div>
-      <table class="admin-table">
-        <thead><tr><th>File</th><th>Dimensione</th><th>Caricato il</th><th>Azioni</th></tr></thead>
-        <tbody id="archiveTableBody"></tbody>
-      </table>
-      <div id="archiveEmptyNote" class="empty-note hidden">Nessun file ancora caricato.</div>
+      <div id="archiveByPanelHost"></div>
+      <div id="archiveEmptyNote" class="empty-note hidden">Nessun panel con sigari assegnati.</div>
     </div>
 
     <!-- ===== TAB: PANELIST ===== -->
@@ -663,24 +664,6 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <div id="alertModalText" style="font-size:15px;line-height:1.6;margin-bottom:22px;"></div>
       <div style="display:flex;justify-content:flex-end;">
         <button class="btn btn-primary" onclick="closeAlertModal()">Ok</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== EXPORT MODAL ===== -->
-  <div id="exportModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;">
-    <div style="background:var(--login-bg);color:var(--login-ink);max-width:760px;width:100%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);">
-      <div style="padding:18px 22px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;">
-        <strong id="exportModalTitle" style="font-family:'Playfair Display',serif;font-size:16px;">Export XML</strong>
-        <button class="btn btn-small" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closeExportModal()">Chiudi</button>
-      </div>
-      <div style="padding:16px 22px;font-size:12.5px;color:#5a4632;">
-        Copia il testo sotto e salvalo in un file <strong>.xml</strong>, oppure usa "Scarica file".
-      </div>
-      <textarea id="exportXmlContent" readonly style="flex:1;margin:0 22px 18px;background:#fff;color:#1c1712;border:1px solid #ccc;font-family:monospace;font-size:12px;min-height:320px;"></textarea>
-      <div style="padding:0 22px 20px;display:flex;gap:12px;">
-        <button class="btn btn-primary" onclick="copyExportXml()">Copia testo</button>
-        <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="downloadExportXml()">Scarica file</button>
       </div>
     </div>
   </div>
@@ -833,6 +816,7 @@ function switchTab(name){
     document.querySelector('.tab-btn[data-tab="'+t+'"]').classList.toggle('active', t===name);
   });
   if(name === 'archive'){ loadArchiveTable(); }
+  if(name === 'export'){ populateExportSelector(); }
 }
 
 /* ============================================================
@@ -1224,16 +1208,383 @@ function resetToDefaultPassword(){
 }
 
 /* ============================================================
-   EXPORT — raccolta XML di tutti i Panelist per un Panel
+   ESITO PANEL — analisi comparativa Panelist su un sigaro,
+   a partire dal report unico (report_panel_<numero>.xml)
    ============================================================ */
+let _esitoReportDoc = null;
+let _esitoCurrentPanelNumero = null;
+
 async function populateExportSelector(){
-  document.getElementById('ex-panel').innerHTML = _panelsCache
-    .map(p=>`<option value="${p.numero}">Panel ${escapeHtml(p.numero)}</option>`).join('');
+  document.getElementById('es-panel').innerHTML =
+    '<option value="">— seleziona —</option>' +
+    _panelsCache.map(p=>`<option value="${p.numero}">Panel ${escapeHtml(p.numero)}</option>`).join('');
+  document.getElementById('es-sigaro').innerHTML = '<option value="">— seleziona un panel —</option>';
+  document.getElementById('es-sigaro').disabled = true;
+  document.getElementById('esitoStatusNote').textContent = '';
+  document.getElementById('esitoAnalysisHost').innerHTML = '';
 }
 
-/* ============================================================
-   ARCHIVIO XML (Supabase Storage — bucket "panel-exports")
-   ============================================================ */
+async function onEsitoPanelChange(){
+  const numero = document.getElementById('es-panel').value;
+  const sigaroSel = document.getElementById('es-sigaro');
+  const note = document.getElementById('esitoStatusNote');
+  document.getElementById('esitoAnalysisHost').innerHTML = '';
+  sigaroSel.innerHTML = '<option value="">— seleziona —</option>';
+  sigaroSel.disabled = true;
+  note.textContent = '';
+  _esitoReportDoc = null;
+  _esitoCurrentPanelNumero = numero;
+  if(!numero) return;
+
+  note.textContent = 'Caricamento report…';
+  const fileName = `report_panel_${numero}.xml`;
+  const { data, error } = await sb.storage.from('panel-exports').download(fileName);
+  if(error){
+    note.textContent = 'Nessun report trovato per questo panel. Generalo prima dal tab "Archivio Sottomissioni".';
+    return;
+  }
+  const text = await data.text();
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if(doc.getElementsByTagName('parsererror').length > 0){
+    note.textContent = 'Il report di questo panel non è leggibile (XML non valido). Rigeneralo.';
+    return;
+  }
+  _esitoReportDoc = doc;
+  const sigari = Array.from(doc.getElementsByTagName('sigaro'));
+  if(sigari.length === 0){
+    note.textContent = 'Il report non contiene sigari con schede compilate.';
+    return;
+  }
+  const numeri = sigari.map(s=>s.getAttribute('numero')).sort((a,b)=>{
+    const na=parseInt(a,10), nb=parseInt(b,10);
+    if(!isNaN(na) && !isNaN(nb)) return na-nb;
+    return a.localeCompare(b);
+  });
+  sigaroSel.innerHTML = '<option value="">— seleziona —</option>' +
+    numeri.map(n=>`<option value="${escapeHtml(n)}">Sigaro ${escapeHtml(n)}</option>`).join('');
+  sigaroSel.disabled = false;
+  note.textContent = '';
+}
+
+function onEsitoSigaroChange(){
+  const sigaroNum = document.getElementById('es-sigaro').value;
+  const host = document.getElementById('esitoAnalysisHost');
+  host.innerHTML = '';
+  if(!sigaroNum || !_esitoReportDoc) return;
+
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNum);
+  if(!sigaroEl){ host.innerHTML = '<div class="empty-note">Sigaro non trovato nel report.</div>'; return; }
+
+  const panelistEls = Array.from(sigaroEl.getElementsByTagName('panelist'));
+  const panelisti = panelistEls.map(pEl=>{
+    const punteggioEl = pEl.querySelector('giudizio_finale > punteggio');
+    const commentiEl = pEl.querySelector('giudizio_finale > commenti');
+    const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
+    const centroEl = pEl.querySelector('descrizione_fasi > centro');
+    const finaleEl = pEl.querySelector('descrizione_fasi > finale');
+    return {
+      nome: pEl.getAttribute('nome') || '—',
+      punteggio: punteggioEl ? parseInt(punteggioEl.textContent, 10) : null,
+      commenti: commentiEl ? commentiEl.textContent : '',
+      ingresso1: ingressoEl ? ingressoEl.textContent : '',
+      ingresso2: centroEl ? centroEl.textContent : '',
+      ingresso3: finaleEl ? finaleEl.textContent : '',
+    };
+  }).filter(p => p.punteggio !== null && !isNaN(p.punteggio));
+
+  if(panelisti.length === 0){
+    host.innerHTML = '<div class="empty-note">Nessun punteggio valido trovato per questo sigaro.</div>';
+    return;
+  }
+
+  renderEsitoAnalysis(_esitoCurrentPanelNumero, sigaroNum, panelisti, host);
+}
+
+function scoreBandLabel(score){
+  if(score>=96) return {range:'96-100', idx:5};
+  if(score>=91) return {range:'91-95', idx:4};
+  if(score>=86) return {range:'86-90', idx:3};
+  if(score>=81) return {range:'81-85', idx:2};
+  if(score>=76) return {range:'76-80', idx:1};
+  return {range:'< 76', idx:0};
+}
+
+function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
+  const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
+  const minP = sorted[0];
+  const maxP = sorted[sorted.length-1];
+  const trimmed = panelisti.length > 2
+    ? panelisti.filter(p => p !== minP && p !== maxP)
+    : panelisti;
+  const trimmedAvg = trimmed.reduce((s,p)=>s+p.punteggio,0) / trimmed.length;
+  const roundedScore = Math.round(trimmedAvg);
+  const band = scoreBandLabel(roundedScore);
+
+  const tableRows = panelisti.map(p=>`
+    <tr>
+      <td data-label="Panelist">${escapeHtml(p.nome)}</td>
+      <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
+      <td data-label="Commenti">${escapeHtml(p.commenti) || '—'}</td>
+      <td data-label="Ingresso 1° terzo">${escapeHtml(p.ingresso1) || '—'}</td>
+      <td data-label="Ingresso 2° terzo">${escapeHtml(p.ingresso2) || '—'}</td>
+      <td data-label="Ingresso 3° terzo">${escapeHtml(p.ingresso3) || '—'}</td>
+    </tr>
+  `).join('');
+
+  host.innerHTML = `
+    <div class="sheet" style="margin-top:6px;">
+      <div style="overflow-x:auto;">
+        <table class="admin-table" style="min-width:600px;">
+          <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Commenti</th><th>Ingresso 1° terzo</th><th>Ingresso 2° terzo</th><th>Ingresso 3° terzo</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start;margin-top:30px;">
+        <div style="flex:1 1 320px;min-width:280px;">
+          <div class="block-title cap" style="margin-bottom:14px;">Distribuzione Punteggi</div>
+          <div id="esitoChartHost"></div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;gap:14px;">
+          <div style="text-align:center;">
+            <div class="subtle">Score (trimmed mean)</div>
+            <div style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);">${trimmedAvg.toFixed(1)}</div>
+          </div>
+          <div style="text-align:center;">
+            <div class="subtle">Punteggio</div>
+            <div style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);">${band.idx}</div>
+            <div class="subtle">${band.range}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:34px;">
+        <div class="block-title cap">Valutazione Globale (con Claude.ai — gratuito)</div>
+        <div class="block-hint" style="margin-top:10px;">
+          1) Copia il prompt → 2) Apri Claude.ai (gratis) e incollalo in una nuova chat → 3) Copia la risposta intera e incollala qui sotto → 4) Clicca "Applica risposta incollata".
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-small" onclick="copiaPromptClaude('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Copia Prompt per Claude.ai</button>
+        </div>
+        <textarea id="esitoRispostaIncollata" rows="5" style="margin-top:14px;width:100%;" placeholder="Incolla qui l'intera risposta di Claude.ai…"></textarea>
+        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-small" onclick="applicaRispostaIncollata()">Applica risposta incollata</button>
+        </div>
+      </div>
+
+      <div style="margin-top:26px;">
+        <div class="block-title cap">Valutazione Globale ITA</div>
+        <textarea id="esitoValIta" rows="4" style="margin-top:10px;width:100%;" placeholder="Compare qui dopo aver applicato la risposta…"></textarea>
+      </div>
+      <div style="margin-top:22px;">
+        <div class="block-title cap">Valutazione Globale ENG</div>
+        <textarea id="esitoValEng" rows="4" style="margin-top:10px;width:100%;" placeholder="Compare qui dopo aver applicato la risposta…"></textarea>
+      </div>
+      <div style="margin-top:10px;">
+        <button class="btn btn-primary btn-small" onclick="salvaValutazioniNelReport('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Salva nel Report</button>
+      </div>
+      <div id="esitoValStatus" class="subtle" style="margin-top:8px;"></div>
+    </div>
+  `;
+
+  renderEsitoChart(panelisti, minP, maxP, trimmedAvg);
+
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
+  if(sigaroEl){
+    const itaEl = sigaroEl.getElementsByTagName('valutazione_globale_ita')[0];
+    const engEl = sigaroEl.getElementsByTagName('valutazione_globale_eng')[0];
+    if(itaEl) document.getElementById('esitoValIta').value = itaEl.textContent;
+    if(engEl) document.getElementById('esitoValEng').value = engEl.textContent;
+  }
+}
+
+function renderEsitoChart(panelisti, minP, maxP, mean){
+  const chartHost = document.getElementById('esitoChartHost');
+  if(!chartHost) return;
+  const W = 560, H = 220, padX = 30;
+  const minScore = Math.min(...panelisti.map(p=>p.punteggio), mean) - 3;
+  const maxScore = Math.max(...panelisti.map(p=>p.punteggio), mean) + 3;
+  const xFor = (v) => padX + (v - minScore) / (maxScore - minScore) * (W - padX*2);
+
+  const sigma = Math.max(4, (maxScore - minScore) / 5);
+  let path = '';
+  for(let x=0; x<=W; x+=4){
+    const score = minScore + (x/(W)) * (maxScore-minScore);
+    const y = H - 30 - 130 * Math.exp(-((score-mean)*(score-mean))/(2*sigma*sigma));
+    path += (x===0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+  }
+
+  const groups = {};
+  panelisti.forEach(p=>{
+    const key = p.punteggio;
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  });
+
+  let dots = '';
+  let labelY = 40;
+  Object.keys(groups).sort((a,b)=>a-b).forEach(key=>{
+    const group = groups[key];
+    const score = parseFloat(key);
+    const x = xFor(score);
+    const isMin = group.includes(minP);
+    const isMax = group.includes(maxP);
+    const color = isMin ? '#9a9a9a' : (isMax ? '#3fae5c' : '#b5202c');
+    const names = group.map(p=>p.nome).join(' e ');
+    dots += `<circle cx="${x}" cy="${H-30}" r="6" fill="${color}" />`;
+    dots += `<text x="${x}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${escapeHtml(names)} — ${score}</text>`;
+    labelY += 16;
+    if(labelY > 110) labelY = 40;
+  });
+
+  const meanX = xFor(mean);
+
+  chartHost.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:100%;height:auto;background:rgba(0,0,0,.15);border-radius:4px;">
+      <path d="${path}" fill="none" stroke="#b08d4f" stroke-width="2"/>
+      <line x1="${meanX}" y1="20" x2="${meanX}" y2="${H-30}" stroke="#ecd49f" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="${meanX}" y="16" text-anchor="middle" font-size="12" font-weight="700" fill="#ecd49f">${mean.toFixed(1)}</text>
+      <line x1="${padX}" y1="${H-30}" x2="${W-padX}" y2="${H-30}" stroke="#7d7468" stroke-width="1"/>
+      ${dots}
+    </svg>
+  `;
+}
+
+function estraiPanelistiSigaro(sigaroNumero){
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
+  if(!sigaroEl) return [];
+  const panelistEls = Array.from(sigaroEl.getElementsByTagName('panelist'));
+  return panelistEls.map(pEl=>{
+    const punteggioEl = pEl.querySelector('giudizio_finale > punteggio');
+    const commentiEl = pEl.querySelector('giudizio_finale > commenti');
+    const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
+    const centroEl = pEl.querySelector('descrizione_fasi > centro');
+    const finaleEl = pEl.querySelector('descrizione_fasi > finale');
+    return {
+      nome: pEl.getAttribute('nome') || '—',
+      punteggio: punteggioEl ? parseInt(punteggioEl.textContent,10) : null,
+      commenti: commentiEl ? commentiEl.textContent : '',
+      ingresso1: ingressoEl ? ingressoEl.textContent : '',
+      ingresso2: centroEl ? centroEl.textContent : '',
+      ingresso3: finaleEl ? finaleEl.textContent : '',
+    };
+  }).filter(p=>p.punteggio !== null && !isNaN(p.punteggio));
+}
+
+function buildPromptValutazioneGlobale(panelisti){
+  const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
+  const minP = sorted[0];
+  const maxP = sorted[sorted.length-1];
+  const incl = panelisti.length > 2 ? panelisti.filter(p=>p!==minP && p!==maxP) : panelisti;
+
+  const dati = incl.map((p,i)=>
+    `Panelist ${i+1} (punteggio ${p.punteggio}):\n` +
+    `- Giudizio complessivo/commenti: ${p.commenti || '—'}\n` +
+    `- Primo terzo: ${p.ingresso1 || '—'}\n` +
+    `- Secondo terzo: ${p.ingresso2 || '—'}\n` +
+    `- Terzo finale: ${p.ingresso3 || '—'}`
+  ).join('\n\n');
+
+  return `Sei un redattore esperto di sigari. Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
+    `Scrivi una "Valutazione Globale" in ITALIANO che sintetizzi e amalgami questi giudizi, tenendo conto sia della valutazione complessiva che dei tre terzi di ciascun Panelist. Usa una narrazione eclettica e fantasiosa nello stile, ma NON INVENTARE alcuna informazione: sintetizza e amalgama solo ciò che è scritto. Il testo deve restare entro 500 caratteri totali (spazi inclusi, conteggio stile Microsoft Word).\n\n` +
+    `Poi traduci letteralmente quel testo in INGLESE, anch'esso entro 500 caratteri (spazi inclusi).\n\n` +
+    `Rispondi ESATTAMENTE in questo formato, senza markdown, senza altro testo:\n\nITALIANO:\n<testo qui>\n\nENGLISH:\n<testo qui>`;
+}
+
+function copiaPromptClaude(panelNumero, sigaroNumero){
+  const status = document.getElementById('esitoValStatus');
+  const panelisti = estraiPanelistiSigaro(sigaroNumero);
+  if(panelisti.length === 0){
+    status.textContent = 'Nessun dato disponibile per generare il prompt.';
+    status.style.color = '#b5202c';
+    return;
+  }
+  const prompt = buildPromptValutazioneGlobale(panelisti);
+
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = prompt;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand('copy'); }catch(e){}
+    document.body.removeChild(ta);
+  };
+
+  try{
+    navigator.clipboard.writeText(prompt).catch(fallback);
+  }catch(e){ fallback(); }
+
+  window.open('https://claude.ai/new', '_blank');
+  status.textContent = 'Prompt copiato negli appunti. Incollalo nella nuova scheda di Claude.ai, poi copia qui sotto la risposta intera.';
+  status.style.color = '#5a4632';
+}
+
+function applicaRispostaIncollata(){
+  const status = document.getElementById('esitoValStatus');
+  const raw = document.getElementById('esitoRispostaIncollata').value;
+  if(!raw.trim()){
+    status.textContent = 'Incolla prima la risposta di Claude.ai nel campo sopra.';
+    status.style.color = '#b5202c';
+    return;
+  }
+
+  const itaMatch = raw.match(/ITALIANO\s*:?\s*([\s\S]*?)(?=ENGLISH\s*:|$)/i);
+  const engMatch = raw.match(/ENGLISH\s*:?\s*([\s\S]*)/i);
+
+  const ita = itaMatch ? itaMatch[1].trim() : '';
+  const eng = engMatch ? engMatch[1].trim() : '';
+
+  if(!ita && !eng){
+    status.textContent = 'Non sono riuscito a trovare le sezioni "ITALIANO:" e "ENGLISH:" nel testo incollato. Verifica il formato della risposta.';
+    status.style.color = '#b5202c';
+    return;
+  }
+
+  document.getElementById('esitoValIta').value = ita;
+  document.getElementById('esitoValEng').value = eng;
+  status.textContent = '✓ Testo applicato. Ricordati di "Salva nel Report" per renderlo definitivo.';
+  status.style.color = '#2f7a3f';
+}
+
+async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
+  const ita = document.getElementById('esitoValIta').value;
+  const eng = document.getElementById('esitoValEng').value;
+  const status = document.getElementById('esitoValStatus');
+
+  const sigari = Array.from(_esitoReportDoc.getElementsByTagName('sigaro'));
+  const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
+  if(!sigaroEl){ status.textContent = 'Errore: sigaro non trovato nel report.'; return; }
+
+  ['valutazione_globale_ita','valutazione_globale_eng'].forEach(tag=>{
+    const existing = sigaroEl.getElementsByTagName(tag)[0];
+    if(existing) sigaroEl.removeChild(existing);
+  });
+  const itaNode = _esitoReportDoc.createElement('valutazione_globale_ita');
+  itaNode.textContent = ita;
+  const engNode = _esitoReportDoc.createElement('valutazione_globale_eng');
+  engNode.textContent = eng;
+  sigaroEl.appendChild(itaNode);
+  sigaroEl.appendChild(engNode);
+
+  const xmlText = new XMLSerializer().serializeToString(_esitoReportDoc);
+  const fileName = `report_panel_${panelNumero}.xml`;
+  try{
+    const blob = new Blob([xmlText], {type:'application/xml'});
+    const { error } = await sb.storage.from('panel-exports').upload(fileName, blob, { upsert:true, contentType:'application/xml' });
+    if(error){ status.textContent = 'Errore nel salvataggio: ' + error.message; status.style.color = '#b5202c'; return; }
+    status.textContent = '✓ Valutazioni salvate nel report.';
+    status.style.color = '#2f7a3f';
+  }catch(err){
+    status.textContent = 'Errore: ' + err.message;
+    status.style.color = '#b5202c';
+  }
+}
+
 function formatBytes(n){
   if(n == null) return '—';
   if(n < 1024) return n + ' B';
@@ -1241,41 +1592,185 @@ function formatBytes(n){
   return (n/1024/1024).toFixed(2) + ' MB';
 }
 
-async function loadArchiveTable(){
-  const tbody = document.getElementById('archiveTableBody');
-  const empty = document.getElementById('archiveEmptyNote');
-  tbody.innerHTML = '<tr><td colspan="4">Caricamento…</td></tr>';
+function sanitizeFileNamePart(s){
+  return String(s||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,'_')
+    .replace(/^_+|_+$/g,'') || 'panelist';
+}
 
-  const { data, error } = await sb.storage.from('panel-exports').list('', {
-    limit: 200,
-    sortBy: { column: 'name', order: 'asc' }
-  });
-  if(error){
-    tbody.innerHTML = '<tr><td colspan="4">Errore nel caricamento dell\'archivio: ' + escapeHtml(error.message) + '</td></tr>';
+async function loadArchiveTable(){
+  const host = document.getElementById('archiveByPanelHost');
+  const empty = document.getElementById('archiveEmptyNote');
+  host.innerHTML = '<div class="empty-note">Caricamento…</div>';
+
+  // 1) elenco file presenti nell'archivio (bucket panel-exports)
+  const { data: files, error: filesErr } = await sb.storage.from('panel-exports').list('', { limit: 500 });
+  if(filesErr){
+    host.innerHTML = '<div class="empty-note">Errore nel caricamento dell\'archivio: ' + escapeHtml(filesErr.message) + '</div>';
+    return;
+  }
+  const fileMap = {};
+  (files || []).forEach(f=>{ if(f.name) fileMap[f.name] = f; });
+
+  // 2) panel disponibili
+  let panels = _panelsCache;
+  if(!panels || panels.length===0){
+    const { data: p } = await sb.from('panels').select('*').order('numero');
+    panels = p || [];
+  }
+
+  // 3) assegnazioni con panelist e panel di riferimento
+  const { data: assigns, error: asErr } = await sb
+    .from('assegnazioni')
+    .select('utente_id, profiles(full_name), sigari(panel_id)');
+  if(asErr){
+    host.innerHTML = '<div class="empty-note">Errore nel caricamento delle assegnazioni: ' + escapeHtml(asErr.message) + '</div>';
     return;
   }
 
-  const files = (data || []).filter(f => f.name && f.name.endsWith('.xml'));
-  tbody.innerHTML = '';
-  empty.classList.toggle('hidden', files.length > 0);
-
-  files.forEach(f=>{
-    const sizeBytes = f.metadata && f.metadata.size ? f.metadata.size : null;
-    const updatedAt = f.updated_at || f.created_at;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td data-label="File">${escapeHtml(f.name)}</td>
-      <td data-label="Dimensione">${formatBytes(sizeBytes)}</td>
-      <td data-label="Caricato il">${formatDateTime(updatedAt)}</td>
-      <td data-label="Azioni">
-        <div class="row-actions">
-          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${f.name}')">Scarica</button>
-          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${f.name}')">Elimina</button>
-        </div>
-      </td>
-    `;
-    tbody.appendChild(tr);
+  // raggruppa panelist unici per panel_id
+  const byPanel = {};
+  (assigns || []).forEach(a=>{
+    const panelId = a.sigari && a.sigari.panel_id;
+    if(!panelId || !a.profiles) return;
+    if(!byPanel[panelId]) byPanel[panelId] = {};
+    byPanel[panelId][a.utente_id] = a.profiles.full_name;
   });
+
+  host.innerHTML = '';
+  const panelsConSigari = panels.filter(p => byPanel[p.id]);
+  empty.classList.toggle('hidden', panelsConSigari.length > 0);
+  window._archiveRowsByPanel = window._archiveRowsByPanel || {};
+
+  panelsConSigari.forEach(panel=>{
+    const panelistMap = byPanel[panel.id] || {};
+    const rows = Object.keys(panelistMap).map(utenteId=>{
+      const fullName = panelistMap[utenteId];
+      const fileName = `panel_${panel.numero}_${sanitizeFileNamePart(fullName)}.xml`;
+      const file = fileMap[fileName];
+      const completato = !!file;
+      return { fullName, fileName, completato, file };
+    }).sort((a,b)=> a.fullName.localeCompare(b.fullName));
+
+    window._archiveRowsByPanel[panel.id] = { rows, numero: panel.numero };
+
+    const reportFileName = `report_panel_${panel.numero}.xml`;
+    const reportFile = fileMap[reportFileName];
+
+    const section = document.createElement('div');
+    section.className = 'card';
+    section.style.width = '100%';
+    section.style.marginBottom = '22px';
+    section.style.cursor = 'default';
+
+    const doneCount = rows.filter(r=>r.completato).length;
+    section.innerHTML = `
+      <div class="cig-no">Panel ${escapeHtml(panel.numero)}</div>
+      <div class="cig-date">${doneCount} / ${rows.length} sottomissioni completate</div>
+      <div class="card-actions" style="margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-small btn-primary" onclick="generatePanelReport('${panel.id}')">Genera Report Unico</button>
+        ${reportFile ? `
+          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${reportFileName}')">Scarica Report</button>
+          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${reportFileName}')">Elimina Report</button>
+        ` : ''}
+      </div>
+      ${reportFile ? `<div class="subtle" style="margin-top:6px;">Report generato il ${formatDateTime(reportFile.updated_at || reportFile.created_at)}</div>` : ''}
+      <table class="admin-table" style="margin-top:14px;">
+        <thead><tr><th>Panelist</th><th>Stato</th><th>Azioni</th></tr></thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr>
+              <td data-label="Panelist">${escapeHtml(r.fullName)}</td>
+              <td data-label="Stato">
+                <span class="panel-status ${r.completato?'completato':'in-corso'}" style="position:static;display:inline-flex;">
+                  <span class="status-dot ${r.completato?'completato':'in-corso'}"></span>
+                  <span class="status-label">${r.completato?'Completato':'In corso'}</span>
+                </span>
+              </td>
+              <td data-label="Azioni">
+                ${r.completato ? `
+                  <div class="row-actions">
+                    <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${r.fileName}')">Scarica</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${r.fileName}')">Elimina</button>
+                  </div>
+                ` : '<span class="subtle">In attesa di sottomissione</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    host.appendChild(section);
+  });
+}
+
+async function generatePanelReport(panelId){
+  const entry = (window._archiveRowsByPanel || {})[panelId];
+  if(!entry){ showAlert('Dati del panel non disponibili, aggiorna l\'elenco e riprova.'); return; }
+  const { rows, numero } = entry;
+  const completed = rows.filter(r=>r.completato);
+  if(completed.length === 0){
+    showAlert('Nessuna sottomissione completata per questo panel: impossibile generare il report.');
+    return;
+  }
+
+  const sigaroMap = {};
+  const erroriParsing = [];
+
+  for(const row of completed){
+    const { data, error } = await sb.storage.from('panel-exports').download(row.fileName);
+    if(error){ erroriParsing.push(row.fullName + ': ' + error.message); continue; }
+    const text = await data.text();
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if(doc.getElementsByTagName('parsererror').length > 0){
+      erroriParsing.push(row.fullName + ': file XML non valido');
+      continue;
+    }
+    const schede = Array.from(doc.getElementsByTagName('scheda'));
+    schede.forEach(schedaEl=>{
+      const sigaroEl = schedaEl.getElementsByTagName('sigaro')[0];
+      const sigaroNum = sigaroEl ? sigaroEl.textContent.trim() : 'sconosciuto';
+      if(!sigaroMap[sigaroNum]) sigaroMap[sigaroNum] = [];
+      const schedaXml = new XMLSerializer().serializeToString(schedaEl);
+      sigaroMap[sigaroNum].push({ panelist: row.fullName, schedaXml });
+    });
+  }
+
+  const sigariSorted = Object.keys(sigaroMap).sort((a,b)=>{
+    const na = parseInt(a,10), nb = parseInt(b,10);
+    if(!isNaN(na) && !isNaN(nb)) return na-nb;
+    return a.localeCompare(b);
+  });
+
+  if(sigariSorted.length === 0){
+    showAlert('Non è stato possibile leggere nessuna scheda valida dagli XML sottomessi.' + (erroriParsing.length? ' Dettagli: ' + erroriParsing.join('; ') : ''));
+    return;
+  }
+
+  let body = '';
+  sigariSorted.forEach(sigaroNum=>{
+    body += `  <sigaro numero="${xmlEsc(sigaroNum)}">\n`;
+    sigaroMap[sigaroNum].forEach(item=>{
+      body += `    <panelist nome="${xmlEsc(item.panelist)}">\n      ${item.schedaXml}\n    </panelist>\n`;
+    });
+    body += `  </sigaro>\n`;
+  });
+
+  const reportXml = `<?xml version="1.0" encoding="UTF-8"?>\n<report_panel numero="${xmlEsc(numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}</report_panel>`;
+  const reportFileName = `report_panel_${numero}.xml`;
+
+  try{
+    const blob = new Blob([reportXml], {type:'application/xml'});
+    const { error: upErr } = await sb.storage.from('panel-exports')
+      .upload(reportFileName, blob, { upsert:true, contentType:'application/xml' });
+    if(upErr){ showAlert('Errore nel salvataggio del report: ' + upErr.message); return; }
+    showAlert('Report unico del Panel ' + numero + ' generato e salvato come "' + reportFileName + '".' + (erroriParsing.length? ' Attenzione, alcuni file non sono stati inclusi: ' + erroriParsing.join('; ') : ''));
+    await loadArchiveTable();
+  }catch(err){
+    showAlert('Errore: ' + err.message);
+  }
 }
 
 async function downloadArchiveFile(name){
@@ -1300,98 +1795,6 @@ function xmlEsc(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
 
-function schedaToXmlFull(t){
-  const j = (obj) => obj ? Object.entries(obj).map(([k,v])=>{
-    if(v && typeof v === 'object'){
-      return `      <descrittore nome="${xmlEsc(k)}">` +
-        Object.entries(v).map(([kk,vv])=>`<${xmlEsc(kk)}>${xmlEsc(vv)}</${xmlEsc(kk)}>`).join('') +
-        `</descrittore>`;
-    }
-    return `      <campo nome="${xmlEsc(k)}">${xmlEsc(v)}</campo>`;
-  }).join('\n') : '';
-
-  return `  <scheda id="${xmlEsc(t.id)}">
-    <panel>${xmlEsc(t.sigari?.panels?.numero)}</panel>
-    <sigaro>${xmlEsc(t.sigari?.numero_sigaro)}</sigaro>
-    <panelist>${xmlEsc(t.profiles?.full_name)}</panelist>
-    <username>${xmlEsc(t.profiles?.username)}</username>
-    <data>${xmlEsc(t.data)}</data>
-    <sentori_a_crudo>${xmlEsc(t.sentori_crudo)}</sentori_a_crudo>
-    <analisi_a_crudo>\n${j(t.crudo)}\n    </analisi_a_crudo>
-    <analisi_meccanica>\n${j(t.meccanica)}\n    </analisi_meccanica>
-    <gusto>\n${j(t.gusto)}\n    </gusto>
-    <sensazioni_tattili>\n${j(t.tattili)}\n    </sensazioni_tattili>
-    <aromi>\n${j(t.aromi)}\n    </aromi>
-    <aroma_altro_specifica>${xmlEsc(t.aroma_altro)}</aroma_altro_specifica>
-    <forza>\n${j(t.forza)}\n    </forza>
-    <analisi_organolettica>\n${j(t.organo)}\n    </analisi_organolettica>
-    <considerazioni_finali>\n${j(t.finali)}\n    </considerazioni_finali>
-    <durata_minuti>${xmlEsc(t.durata)}</durata_minuti>
-    <abbinamento_consigliato>${xmlEsc(t.abbinamento)}</abbinamento_consigliato>
-    <giudizio_finale>
-      <punteggio>${xmlEsc(t.punteggio)}</punteggio>
-      <commenti>${xmlEsc(t.commenti)}</commenti>
-    </giudizio_finale>
-    <descrizione_fasi>
-      <ingresso>${xmlEsc(t.desc_ingresso)}</ingresso>
-      <centro>${xmlEsc(t.desc_centro)}</centro>
-      <finale>${xmlEsc(t.desc_finale)}</finale>
-    </descrizione_fasi>
-    <creato_il>${xmlEsc(t.created_at)}</creato_il>
-    <aggiornato_il>${xmlEsc(t.updated_at)}</aggiornato_il>
-  </scheda>`;
-}
-
-let _exportFilename = 'export.xml';
-
-async function exportPanelAll(){
-  const panelNumero = document.getElementById('ex-panel').value;
-  if(!panelNumero){ showAlert('Seleziona un panel.'); return; }
-  const { data, error } = await sb
-    .from('schede_degustazione')
-    .select('*, sigari!inner(numero_sigaro, panels!inner(numero)), profiles(full_name, username)')
-    .eq('sigari.panels.numero', panelNumero);
-  if(error){ showAlert('Errore: ' + error.message); return; }
-  document.getElementById('exportSummary').textContent = (data||[]).length + ' schede trovate per il Panel ' + panelNumero + '.';
-  if(!data || data.length===0){ showAlert('Nessuna scheda compilata per questo panel.'); return; }
-
-  const body = data.map(schedaToXmlFull).join('\n');
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<raccolta_schede panel="${xmlEsc(panelNumero)}" generato_il="${xmlEsc(new Date().toISOString())}" generato_da="${xmlEsc(currentUser.name)}">\n${body}\n</raccolta_schede>`;
-
-  _exportFilename = 'raccolta_panel_'+panelNumero+'.xml';
-  document.getElementById('exportModalTitle').textContent = 'Raccolta XML — Panel ' + panelNumero;
-  document.getElementById('exportXmlContent').value = xml;
-  document.getElementById('exportModal').classList.remove('hidden');
-  try{
-    const blob = new Blob([xml], {type:'application/xml;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = _exportFilename; a.style.display = 'none';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }catch(err){ console.warn('Download automatico non disponibile:', err); }
-}
-
-function closeExportModal(){ document.getElementById('exportModal').classList.add('hidden'); }
-function copyExportXml(){
-  const ta = document.getElementById('exportXmlContent');
-  ta.select();
-  try{
-    navigator.clipboard.writeText(ta.value).then(()=>showAlert('XML copiato negli appunti.'))
-      .catch(()=>{ document.execCommand('copy'); showAlert('XML copiato negli appunti.'); });
-  }catch(e){ document.execCommand('copy'); showAlert('XML copiato negli appunti.'); }
-}
-function downloadExportXml(){
-  try{
-    const xml = document.getElementById('exportXmlContent').value;
-    const blob = new Blob([xml], {type:'application/xml;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = _exportFilename; a.style.display = 'none';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }catch(err){ showAlert('Download non disponibile: copia il testo manualmente con "Copia testo".'); }
-}
 
 /* ============================================================
    CONFIRM MODAL
