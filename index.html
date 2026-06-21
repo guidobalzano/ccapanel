@@ -1036,6 +1036,21 @@ async function loadMyAssignedSigari(panelNumero){
   return data || [];
 }
 
+async function getSubmittedPanelNumbers(){
+  const namePart = sanitizeFileNamePart(currentUser.name);
+  const re = new RegExp('^panel_(\\d+)_' + namePart + '\\.xml$');
+  try{
+    const { data, error } = await sb.storage.from('panel-exports').list('', { limit: 1000 });
+    if(error) return new Set();
+    const set = new Set();
+    (data || []).forEach(f=>{
+      const m = f.name && f.name.match(re);
+      if(m) set.add(m[1]);
+    });
+    return set;
+  }catch(e){ return new Set(); }
+}
+
 async function loadMyTastingsList(){
   const host = document.getElementById('cardsHost');
   const empty = document.getElementById('emptyNote');
@@ -1046,11 +1061,14 @@ async function loadMyTastingsList(){
     .order('updated_at', {ascending:false});
   if(error){ console.error(error); host.innerHTML=''; empty.classList.remove('hidden'); return; }
 
+  const submittedPanels = await getSubmittedPanelNumbers();
+
   host.innerHTML = '';
   empty.classList.toggle('hidden', (data||[]).length>0);
   (data||[]).forEach(t=>{
     const panelNum = t.sigari && t.sigari.panels ? t.sigari.panels.numero : '';
     const sigaroNum = t.sigari ? t.sigari.numero_sigaro : '—';
+    const submitted = panelNum && submittedPanels.has(String(panelNum));
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
@@ -1060,13 +1078,18 @@ async function loadMyTastingsList(){
       <div class="meta">${escapeHtml((t.commenti||'').slice(0,90)) || 'Nessun commento'}</div>
       <div class="card-actions">
         <button class="btn btn-small btn-ghost" data-act="view">Apri</button>
-        <button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>
-        <button class="btn btn-small btn-danger" data-act="del">Elimina</button>
+        ${submitted ? '' : `
+          <button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>
+          <button class="btn btn-small btn-danger" data-act="del">Elimina</button>
+        `}
       </div>
+      ${submitted ? '<div class="subtle" style="margin-top:8px;color:#3fae5c;">✓ Panel sottomesso</div>' : ''}
     `;
     card.querySelector('[data-act="view"]').onclick = ()=>{ detailOrigin='panelList'; openDetail(t.id); };
-    card.querySelector('[data-act="edit"]').onclick = ()=>{ formOrigin='panelList'; openEdit(t.id, t.sigaro_id); };
-    card.querySelector('[data-act="del"]').onclick = ()=>deleteTasting(t.id);
+    const editBtn = card.querySelector('[data-act="edit"]');
+    if(editBtn){ editBtn.onclick = ()=>{ formOrigin='panelList'; openEdit(t.id, t.sigaro_id); }; }
+    const delBtn = card.querySelector('[data-act="del"]');
+    if(delBtn){ delBtn.onclick = ()=>deleteTasting(t.id); }
     host.appendChild(card);
   });
 }
