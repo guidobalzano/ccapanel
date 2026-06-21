@@ -1324,12 +1324,25 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
   const minP = sorted[0];
   const maxP = sorted[sorted.length-1];
+
+  // Media Gaussiana: esclude un'occorrenza del minimo e del massimo, arrotondamento standard
   const trimmed = panelisti.length > 2
     ? panelisti.filter(p => p !== minP && p !== maxP)
     : panelisti;
-  const trimmedAvg = trimmed.reduce((s,p)=>s+p.punteggio,0) / trimmed.length;
-  const roundedScore = Math.round(trimmedAvg);
-  const band = scoreBandLabel(roundedScore);
+  const gaussianaAvg = trimmed.reduce((s,p)=>s+p.punteggio,0) / trimmed.length;
+  const gaussianaScore = Math.round(gaussianaAvg);
+  const gaussianaBand = scoreBandLabel(gaussianaScore);
+
+  // Media Totale: tutti i punteggi, arrotondamento per eccesso (roundup)
+  const totaleAvg = panelisti.reduce((s,p)=>s+p.punteggio,0) / panelisti.length;
+  const totaleScore = Math.ceil(totaleAvg);
+  const totaleBand = scoreBandLabel(totaleScore);
+
+  _esitoCalc = {
+    gaussiana: { avg: gaussianaAvg, band: gaussianaBand },
+    totale: { avg: totaleAvg, band: totaleBand },
+  };
+  _esitoChartData = { panelisti, minP, maxP };
 
   const tableRows = panelisti.map(p=>`
     <tr>
@@ -1356,28 +1369,38 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
           <div class="block-title cap" style="margin-bottom:14px;">Distribuzione Punteggi</div>
           <div id="esitoChartHost"></div>
         </div>
-        <div style="flex:0 0 auto;display:flex;gap:14px;">
-          <div style="text-align:center;">
-            <div class="subtle">Score (trimmed mean)</div>
-            <div style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);">${trimmedAvg.toFixed(1)}</div>
+        <div style="flex:0 0 auto;">
+          <div style="display:flex;gap:14px;">
+            <div style="text-align:center;">
+              <div class="subtle" id="esitoScoreLabel">Score</div>
+              <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
+            </div>
+            <div style="text-align:center;">
+              <div class="subtle">Punteggio</div>
+              <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
+              <div class="subtle" id="esitoPunteggioRange"></div>
+            </div>
           </div>
-          <div style="text-align:center;">
-            <div class="subtle">Punteggio</div>
-            <div style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);">${band.idx}</div>
-            <div class="subtle">${band.range}</div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;font-size:13px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()"> Media Gaussiana
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()"> Media Totale
+            </label>
           </div>
         </div>
       </div>
 
       <div style="margin-top:34px;">
-        <div class="block-title cap">Valutazione Globale (con Claude.ai — gratuito)</div>
+        <div class="block-title cap">Valutazione Globale (CON PROMPTING)</div>
         <div class="block-hint" style="margin-top:10px;">
-          1) Copia il prompt → 2) Apri Claude.ai (gratis) e incollalo in una nuova chat → 3) Copia la risposta intera e incollala qui sotto → 4) Clicca "Applica risposta incollata".
+          1) Copia il prompt → 2) Apri un AI in browser come ad esempio Claude.ai e incollalo in una nuova chat → 3) Copia la risposta intera e incollala qui sotto → 4) Clicca "Applica risposta incollata"
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-small" onclick="copiaPromptClaude('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Copia Prompt per Claude.ai</button>
+          <button class="btn btn-primary btn-small" onclick="copiaPromptClaude('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Copia Prompt</button>
         </div>
-        <textarea id="esitoRispostaIncollata" rows="5" style="margin-top:14px;width:100%;" placeholder="Incolla qui l'intera risposta di Claude.ai…"></textarea>
+        <textarea id="esitoRispostaIncollata" rows="5" style="margin-top:14px;width:100%;" placeholder="Incolla qui l'intera risposta dell'AI"></textarea>
         <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-small" onclick="applicaRispostaIncollata()">Applica risposta incollata</button>
         </div>
@@ -1398,7 +1421,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
     </div>
   `;
 
-  renderEsitoChart(panelisti, minP, maxP, trimmedAvg);
+  aggiornaVisualizzazioneScore('gaussiana');
 
   const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
@@ -1407,6 +1430,32 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
     const engEl = sigaroEl.getElementsByTagName('valutazione_globale_eng')[0];
     if(itaEl) document.getElementById('esitoValIta').value = itaEl.textContent;
     if(engEl) document.getElementById('esitoValEng').value = engEl.textContent;
+  }
+}
+
+let _esitoCalc = null;
+let _esitoChartData = null;
+
+function onEsitoCalcModeChange(){
+  const mode = document.querySelector('input[name="esitoCalcMode"]:checked').value;
+  aggiornaVisualizzazioneScore(mode);
+}
+
+function aggiornaVisualizzazioneScore(mode){
+  if(!_esitoCalc) return;
+  const calc = _esitoCalc[mode];
+  const labelEl = document.getElementById('esitoScoreLabel');
+  const valueEl = document.getElementById('esitoScoreValue');
+  const puntEl = document.getElementById('esitoPunteggioValue');
+  const rangeEl = document.getElementById('esitoPunteggioRange');
+
+  labelEl.textContent = mode === 'gaussiana' ? 'Score (valore medio gaussiano)' : 'Score (media totale)';
+  valueEl.textContent = calc.avg.toFixed(1);
+  puntEl.textContent = calc.band.idx;
+  rangeEl.textContent = calc.band.range;
+
+  if(_esitoChartData){
+    renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, calc.avg);
   }
 }
 
@@ -1434,19 +1483,20 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
   });
 
   let dots = '';
-  let labelY = 40;
-  Object.keys(groups).sort((a,b)=>a-b).forEach(key=>{
-    const group = groups[key];
-    const score = parseFloat(key);
+  const sortedScores = Object.keys(groups).map(k=>parseFloat(k)).sort((a,b)=>a-b);
+  let lastX = -9999, stackLevel = 0;
+  sortedScores.forEach(score=>{
+    const group = groups[score];
     const x = xFor(score);
+    if(x - lastX < 95){ stackLevel++; } else { stackLevel = 0; }
+    lastX = x;
     const isMin = group.includes(minP);
     const isMax = group.includes(maxP);
     const color = isMin ? '#9a9a9a' : (isMax ? '#3fae5c' : '#b5202c');
     const names = group.map(p=>p.nome).join(' e ');
+    const labelY = H - 30 - 14 - (stackLevel * 16);
     dots += `<circle cx="${x}" cy="${H-30}" r="6" fill="${color}" />`;
     dots += `<text x="${x}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${escapeHtml(names)} — ${score}</text>`;
-    labelY += 16;
-    if(labelY > 110) labelY = 40;
   });
 
   const meanX = xFor(mean);
@@ -1523,14 +1573,15 @@ function copiaPromptClaude(panelNumero, sigaroNumero){
     ta.select();
     try{ document.execCommand('copy'); }catch(e){}
     document.body.removeChild(ta);
+    showAlert('Prompt copiato negli appunti.');
   };
 
   try{
-    navigator.clipboard.writeText(prompt).catch(fallback);
+    navigator.clipboard.writeText(prompt).then(()=>{
+      showAlert('Prompt copiato negli appunti.');
+    }).catch(fallback);
   }catch(e){ fallback(); }
-
-  window.open('https://claude.ai/new', '_blank');
-  status.textContent = 'Prompt copiato negli appunti. Incollalo nella nuova scheda di Claude.ai, poi copia qui sotto la risposta intera.';
+  status.textContent = 'Prompt copiato. Incolla in un AI (es. Claude.ai), poi copia qui sotto la risposta intera.';
   status.style.color = '#5a4632';
 }
 

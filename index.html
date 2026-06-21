@@ -558,7 +558,7 @@ footer.foot{
         <button class="btn btn-ghost" onclick="backFromDetail()">← Torna indietro</button>
         <div style="display:flex;gap:12px;">
           <button class="btn btn-ghost" onclick="window.print()">Stampa / PDF</button>
-          <button class="btn btn-danger" onclick="deleteCurrentFromDetail()">Elimina</button>
+          <button class="btn btn-danger" id="detailDeleteBtn" onclick="deleteCurrentFromDetail()">Elimina</button>
         </div>
       </div>
     </div>
@@ -1474,6 +1474,11 @@ async function openDetail(id){
   if(error || !t){ showAlert('Scheda non trovata.'); return; }
   currentDetailId = id;
   document.getElementById('detailHost').innerHTML = renderDetailHTML(t);
+
+  const panelNum = t.sigari && t.sigari.panels ? t.sigari.panels.numero : null;
+  const submitted = panelNum ? await isPanelSubmitted(panelNum) : false;
+  document.getElementById('detailDeleteBtn').classList.toggle('hidden', submitted);
+
   showView('detailView');
 }
 
