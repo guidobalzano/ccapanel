@@ -133,6 +133,12 @@ input,select,textarea{
   color:var(--paper);padding:11px 13px;font-size:14.5px;
   font-family:'Jost',sans-serif;border-radius:2px;
 }
+input[type="radio"], input[type="checkbox"]{
+  width:auto;
+  flex:none;
+  padding:0;
+  margin:0;
+}
 select option{
   background:#fbf8f2;
   color:#1c1712;
@@ -1387,14 +1393,14 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         </div>
       </div>
 
-      <div style="margin-top:18px;font-size:13.5px;">
-        <label style="display:block;margin-bottom:10px;cursor:pointer;">
+      <div style="margin-top:18px;font-size:13.5px;display:flex;flex-direction:column;gap:10px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()">
-          Media Gaussiana
+          <span>Media Gaussiana</span>
         </label>
-        <label style="display:block;cursor:pointer;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()">
-          Media Totale
+          <span>Media Totale</span>
         </label>
       </div>
 
