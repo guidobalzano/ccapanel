@@ -1984,7 +1984,6 @@ async function loadArchiveTable(){
               <td data-label="Azioni">
                 ${r.completato ? `
                   <div class="row-actions">
-                    <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${r.fileName}')">Scarica</button>
                     <button class="btn btn-small btn-ghost" onclick="riapriPanelInModifica('${r.fileName}')">Riapri in Modifica</button>
                     <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${r.fileName}')">Elimina</button>
                   </div>
