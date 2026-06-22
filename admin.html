@@ -1094,7 +1094,7 @@ async function loadUsersTable(){
       <td data-label="Nome">${escapeHtml(u.full_name)}</td>
       <td data-label="Email">${escapeHtml(_emailsById[u.id] || '—')}</td>
       <td data-label="Telefono">${escapeHtml(u.telefono || '—')}</td>
-      <td data-label="Ruolo">${escapeHtml(u.role === 'degustatore' ? 'Panelist' : u.role)}</td>
+      <td data-label="Ruolo">${escapeHtml(u.role === 'degustatore' ? 'Panelist' : (u.role === 'admin' ? 'Admin' : u.role))}</td>
       <td data-label="Registrato il">${formatDateTime(u.created_at)}</td>
       <td data-label="Azioni">
         <div class="row-actions">
