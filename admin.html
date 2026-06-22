@@ -1094,7 +1094,7 @@ async function loadUsersTable(){
       <td data-label="Nome">${escapeHtml(u.full_name)}</td>
       <td data-label="Email">${escapeHtml(_emailsById[u.id] || '—')}</td>
       <td data-label="Telefono">${escapeHtml(u.telefono || '—')}</td>
-      <td data-label="Ruolo">${escapeHtml(u.role)}</td>
+      <td data-label="Ruolo">${escapeHtml(u.role === 'degustatore' ? 'Panelist' : u.role)}</td>
       <td data-label="Registrato il">${formatDateTime(u.created_at)}</td>
       <td data-label="Azioni">
         <div class="row-actions">
@@ -1770,7 +1770,9 @@ async function esportaInWord(panelNumero, sigaroNumero){
       return blocco;
     });
 
-    const finalXml = headerXml + blocchi.join('') + footerXml;
+    const paragrafoVuoto = '<w:p><w:pPr><w:widowControl/></w:pPr></w:p>';
+    const separatore = paragrafoVuoto + paragrafoVuoto;
+    const finalXml = headerXml + blocchi.join(separatore) + footerXml;
 
     zip.file('word/document.xml', finalXml);
     const outBlob = await zip.generateAsync({
@@ -1792,6 +1794,7 @@ async function esportaInWord(panelNumero, sigaroNumero){
 
     status.textContent = '\u2713 Documento Word generato con ' + conValutazione.length + ' sigaro/i: ' + fileName;
     status.style.color = '#2f7a3f';
+    showAlert('Download completato: ' + fileName);
   }catch(err){
     console.error(err);
     status.textContent = 'Errore nella generazione del documento Word: ' + err.message;
