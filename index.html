@@ -151,7 +151,7 @@ input[readonly]{
 input:focus,select:focus,textarea:focus{
   outline:none;border-color:var(--gold);background:rgba(244,234,216,.09);
 }
-textarea{resize:vertical;min-height:64px;overflow-y:scroll;}
+textarea{resize:vertical;min-height:64px;max-height:320px;overflow-y:auto;}
 textarea::-webkit-scrollbar{width:8px;}
 textarea::-webkit-scrollbar-track{background:rgba(0,0,0,.25);border-radius:4px;}
 textarea::-webkit-scrollbar-thumb{background:var(--gold);border-radius:4px;}
@@ -1266,6 +1266,7 @@ function resetForm(){
   updateScoreLabel();
   document.querySelectorAll('#formView input[type=radio]').forEach(r=>r.checked=false);
   delete document.getElementById('formView').dataset.sigaroId;
+  autoGrowAllTextareas();
 }
 
 function resetFormConfirm(){
@@ -1468,6 +1469,7 @@ async function openEdit(id, sigaroId){
   fillTripleGroup(TRIPLE_GROUPS.tattili, t.tattili);
   fillTripleGroup(TRIPLE_GROUPS.aromi, t.aromi);
   updateScoreLabel();
+  autoGrowAllTextareas();
   showView('formView');
 }
 
@@ -1671,6 +1673,22 @@ function formatDate(d){
 /* ============================================================
    INIT
    ============================================================ */
+/* ============================================================
+   AUTO-ESPANSIONE TEXTAREA (iOS nasconde gli scrollbar custom,
+   quindi facciamo crescere il campo invece di farlo scorrere)
+   ============================================================ */
+function autoGrowTextarea(el){
+  if(!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+}
+function autoGrowAllTextareas(){
+  document.querySelectorAll('textarea').forEach(autoGrowTextarea);
+}
+document.addEventListener('input', (e)=>{
+  if(e.target && e.target.tagName === 'TEXTAREA'){ autoGrowTextarea(e.target); }
+});
+
 buildAllFormGroups();
 tryRestoreSession();
 </script>
