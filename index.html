@@ -144,6 +144,10 @@ input[type="date"]{
   height:auto;
   min-height:0;
 }
+input[readonly]{
+  opacity:.7;
+  cursor:not-allowed;
+}
 input:focus,select:focus,textarea:focus{
   outline:none;border-color:var(--gold);background:rgba(244,234,216,.09);
 }
@@ -366,7 +370,7 @@ footer.foot{
 
     <div id="registerForm" class="hidden">
       <div class="field">
-        <label>Nome e Cognome (Catador)</label>
+        <label>Nome e Cognome (Panelist)</label>
         <input id="rg-name" type="text" placeholder="es. Guido Balzano">
       </div>
       <div class="field">
@@ -438,10 +442,10 @@ footer.foot{
           <h1>Scheda di Degustazione Panel</h1>
           <div class="sub">Cigar Club Association</div>
           <div class="meta-row">
-            <div class="field"><label>Panel n.</label><input type="text" id="f-panel" placeholder="es. 61"></div>
-            <div class="field"><label>Data</label><input type="date" id="f-data"></div>
-            <div class="field"><label>Sigaro n.</label><input type="text" id="f-sigaro" placeholder="es. 12"></div>
-            <div class="field"><label>Catador</label><input type="text" id="f-catador" readonly></div>
+            <div class="field"><label>Panel n.</label><input type="text" id="f-panel" placeholder="es. 61" readonly></div>
+            <div class="field"><label>Data</label><input type="date" id="f-data" readonly></div>
+            <div class="field"><label>Sigaro n.</label><input type="text" id="f-sigaro" placeholder="es. 12" readonly></div>
+            <div class="field"><label>Panelist</label><input type="text" id="f-catador" readonly></div>
           </div>
         </div>
 
@@ -1244,10 +1248,8 @@ function cancelForm(){
    ============================================================ */
 function resetForm(){
   document.getElementById('f-panel').value = '';
-  document.getElementById('f-panel').readOnly = false;
   document.getElementById('f-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('f-sigaro').value = '';
-  document.getElementById('f-sigaro').readOnly = false;
   document.getElementById('f-catador').value = currentUser.name;
   document.getElementById('f-sentori-crudo').value = '';
   document.getElementById('f-durata').value = '';
@@ -1267,12 +1269,12 @@ function resetFormConfirm(){
   askConfirm('Resettare la scheda? Tutti i campi inseriti verranno azzerati.', ()=>{
     const keepPanel = document.getElementById('f-panel').value;
     const keepSigaro = document.getElementById('f-sigaro').value;
-    const panelWasLocked = document.getElementById('f-panel').readOnly;
-    const sigaroWasLocked = document.getElementById('f-sigaro').readOnly;
+    const keepData = document.getElementById('f-data').value;
     const sigaroId = document.getElementById('formView').dataset.sigaroId;
     resetForm();
-    if(panelWasLocked){ document.getElementById('f-panel').value = keepPanel; document.getElementById('f-panel').readOnly = true; }
-    if(sigaroWasLocked){ document.getElementById('f-sigaro').value = keepSigaro; document.getElementById('f-sigaro').readOnly = true; }
+    document.getElementById('f-panel').value = keepPanel;
+    document.getElementById('f-sigaro').value = keepSigaro;
+    document.getElementById('f-data').value = keepData;
     if(sigaroId){ document.getElementById('formView').dataset.sigaroId = sigaroId; }
   });
 }
@@ -1520,7 +1522,7 @@ function renderDetailHTML(t){
       <h1>Scheda di Degustazione Panel</h1>
       <div class="sub">${panelNum? 'Panel '+escapeHtml(panelNum)+' — ' : ''}Sigaro n. ${escapeHtml(sigaroNum)} — ${formatDate(t.data)}</div>
       <div class="meta-row" style="justify-content:center;">
-        <div style="color:var(--gold-light);">Catador: ${escapeHtml(currentUser.name)}</div>
+        <div style="color:var(--gold-light);">Panelist: ${escapeHtml(currentUser.name)}</div>
       </div>
     </div>
     ${radioBlock('Analisi a Crudo', RADIO_GROUPS.crudo, t.crudo)}
