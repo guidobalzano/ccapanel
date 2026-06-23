@@ -151,7 +151,10 @@ input[readonly]{
 input:focus,select:focus,textarea:focus{
   outline:none;border-color:var(--gold);background:rgba(244,234,216,.09);
 }
-textarea{resize:vertical;min-height:64px;}
+textarea{resize:vertical;min-height:64px;overflow-y:scroll;}
+textarea::-webkit-scrollbar{width:8px;}
+textarea::-webkit-scrollbar-track{background:rgba(0,0,0,.25);border-radius:4px;}
+textarea::-webkit-scrollbar-thumb{background:var(--gold);border-radius:4px;}
 .login-actions{margin-top:8px;}
 .login-actions .btn{width:100%;}
 .toggle-row{
