@@ -1235,6 +1235,7 @@ function newTastingForCigar(row){
   document.getElementById('f-sigaro').readOnly = true;
   document.getElementById('formView').dataset.sigaroId = row.sigaro_id;
   showView('formView');
+  autoGrowAllTextareas();
 }
 
 function cancelForm(){
@@ -1469,8 +1470,8 @@ async function openEdit(id, sigaroId){
   fillTripleGroup(TRIPLE_GROUPS.tattili, t.tattili);
   fillTripleGroup(TRIPLE_GROUPS.aromi, t.aromi);
   updateScoreLabel();
-  autoGrowAllTextareas();
   showView('formView');
+  autoGrowAllTextareas();
 }
 
 /* ============================================================
