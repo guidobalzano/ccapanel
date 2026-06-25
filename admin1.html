@@ -1536,9 +1536,9 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
   chartHost.innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto;background:rgba(0,0,0,.15);border-radius:4px;">
       <path d="${path}" fill="none" stroke="#b08d4f" stroke-width="2"/>
-      <line x1="${meanX.toFixed(1)}" y1="${curveTop-8}" x2="${meanX.toFixed(1)}" y2="${baseline}" stroke="#ecd49f" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <text x="${meanX.toFixed(1)}" y="${curveTop-12}" text-anchor="middle" font-size="13" font-weight="700" fill="#ecd49f">${mean.toFixed(1)}</text>
-      <line x1="${padX}" y1="${baseline}" x2="${W-padX}" y2="${baseline}" stroke="#7d7468" stroke-width="1"/>
+      <line x1="${meanX.toFixed(1)}" y1="${curveTop-8}" x2="${meanX.toFixed(1)}" y2="${baseline}" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="${meanX.toFixed(1)}" y="${curveTop-12}" text-anchor="middle" font-size="13" font-weight="700" fill="#c0392b">${mean.toFixed(1)}</text>
+      <line x1="${padX}" y1="${baseline}" x2="${W-padX}" y2="${baseline}" stroke="#555555" stroke-width="1"/>
       ${dotsSvg}
     </svg>
     <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;">
