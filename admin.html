@@ -1096,7 +1096,7 @@ async function renderSigariTable(){
       <td data-label="Sigaro n.">Sigaro n. ${escapeHtml(s.numero_sigaro)}</td>
       <td data-label="Assegnato a">${ass.length? escapeHtml(ass.join(', ')) : '<span class="subtle">Nessuno</span>'}</td>
       <td data-label="Azioni" style="white-space:nowrap;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-small" onclick="apriModaleAnagraficaEsistente(${s.id}, '${escapeHtml(s.numero_sigaro)}')">Anagrafica</button>
+        <button class="btn btn-small" data-sigaro-id="${s.id}" data-numero-sigaro="${escapeHtml(s.numero_sigaro)}" onclick="apriModaleAnagraficaEsistente(this.dataset.sigaroId, this.dataset.numeroSigaro)">Anagrafica</button>
         <button class="btn btn-small btn-danger" onclick="deleteSigaro(${s.id})">Elimina</button>
       </td>
     `;
@@ -1855,7 +1855,12 @@ function aggiornaConteggioCaratteri(textareaId, counterId){
   document.getElementById(counterId).textContent = n + ' caratteri';
 }
 
+let _esitoCurrentSigaroNumero = null;
+
 function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
+  _esitoCurrentPanelNumero = panelNumero;
+  _esitoCurrentSigaroNumero = sigaroNumero;
+
   _esitoPanelistiCorrenti = panelisti;
 
   const tableRows = panelisti.map(p=>`
@@ -1892,18 +1897,19 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <div style="margin-top:34px;">
         <div class="block-title cap" style="display:inline-block;background:var(--gold);color:var(--ink);padding:6px 14px;border-radius:2px;">Calcolo Punteggio Globale</div>
 
-        <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;margin-top:18px;">
-          <div style="overflow-x:auto;">
-            <table class="admin-table" style="min-width:420px;max-width:520px;">
-              <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
-              <tbody id="esitoCalcTableBody">${calcRows}</tbody>
-            </table>
-          </div>
+        <div style="overflow-x:auto;margin-top:18px;">
+          <table class="admin-table" style="min-width:420px;max-width:520px;">
+            <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
+            <tbody id="esitoCalcTableBody">${calcRows}</tbody>
+          </table>
+        </div>
 
-          <div style="display:flex;flex-direction:column;gap:14px;min-width:230px;">
+        <div style="display:flex;justify-content:center;margin-top:30px;">
+          <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:260px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
               <span class="subtle cap" style="font-size:13px;">Forza</span>
-              <div id="esitoForzaValue" style="border:1px solid var(--gold);border-radius:3px;padding:8px 22px;font-family:'Playfair Display',serif;font-size:22px;min-width:26px;text-align:center;color:var(--gold-light);"></div>
+              <input type="number" id="esitoForzaValue" min="1" max="5" step="1"
+                style="width:66px;text-align:center;font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light);background:transparent;border:1px solid var(--gold);border-radius:3px;padding:6px 0;">
             </div>
             <label style="display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;">
               <span class="subtle cap" style="font-size:13px;">Best Buy!</span>
@@ -1940,7 +1946,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
           1) Copia il prompt → 2) Apri un AI in browser come ad esempio Claude.ai e incollalo in una nuova chat → 3) Copia la risposta intera e incollala qui sotto → 4) Clicca "Applica risposta incollata"
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-small" onclick="copiaPromptClaude('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Copia Prompt</button>
+          <button class="btn btn-primary btn-small" onclick="copiaPromptClaude()">Copia Prompt</button>
         </div>
         <textarea id="esitoRispostaIncollata" rows="5" style="margin-top:14px;width:100%;" placeholder="Incolla qui l'intera risposta dell'AI"></textarea>
         <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
@@ -1959,8 +1965,8 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         <textarea id="esitoValEng" rows="4" style="margin-top:10px;width:100%;" placeholder="Compare qui dopo aver applicato la risposta…" oninput="aggiornaConteggioCaratteri('esitoValEng','esitoCountEng')"></textarea>
       </div>
       <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-small" onclick="salvaValutazioniNelReport('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Salva nel Report</button>
-        <button class="btn btn-ghost btn-small" onclick="esportaInWord('${escapeHtml(panelNumero)}','${escapeHtml(sigaroNumero)}')">Esporta in Word</button>
+        <button class="btn btn-primary btn-small" onclick="salvaValutazioniNelReport()">Salva nel Report</button>
+        <button class="btn btn-ghost btn-small" onclick="esportaInWord()">Esporta in Word</button>
       </div>
       <div id="esitoValStatus" class="subtle" style="margin-top:8px;"></div>
     </div>
@@ -1973,6 +1979,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   const sigaroElRestore = sigariRestore.find(s=>s.getAttribute('numero')===sigaroNumero);
   let esclusiSalvati = [];
   let normalizzatoSalvato = null;
+  let forzaSalvata = null;
   let flagOkSalvato = false;
   let flagBestBuySalvato = false;
   if(sigaroElRestore){
@@ -1984,6 +1991,11 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
     if(puntEl && puntEl.textContent.trim() !== ''){
       const n = parseInt(puntEl.textContent, 10);
       if(!isNaN(n)) normalizzatoSalvato = n;
+    }
+    const forzaEl = sigaroElRestore.getElementsByTagName('forza_calcolata')[0];
+    if(forzaEl && forzaEl.textContent.trim() !== ''){
+      const nf = parseInt(forzaEl.textContent, 10);
+      if(!isNaN(nf)) forzaSalvata = nf;
     }
     const flagOkEl = sigaroElRestore.getElementsByTagName('flag_ok')[0];
     flagOkSalvato = !!(flagOkEl && flagOkEl.textContent.trim() === '1');
@@ -1999,7 +2011,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   }
   document.getElementById('esitoFlagOk').checked = flagOkSalvato;
   document.getElementById('esitoFlagBestBuy').checked = flagBestBuySalvato;
-  ricalcolaEsitoPunteggio(normalizzatoSalvato);
+  ricalcolaEsitoPunteggio(normalizzatoSalvato, forzaSalvata);
 
   const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
@@ -2022,7 +2034,7 @@ let _esitoPanelistiCorrenti = [];
  * valore calcolato, a meno che non si passi esplicitamente un valore da
  * ripristinare (usato al primo caricamento di un sigaro già salvato).
  */
-function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
+function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare, forzaDaRipristinare){
   const checkboxes = Array.from(document.querySelectorAll('.esito-calc-checkbox'));
   const inclusi = checkboxes
     .filter(cb=>cb.checked)
@@ -2037,20 +2049,22 @@ function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
 
   // ---- FORZA: media aritmetica di TUTTI i terzi (ingresso+centro+finale)
   //      di ciascun panelist incluso nel calcolo. Si arrotonda SOLO il
-  //      risultato finale, non i singoli valori intermedi. ----
+  //      risultato finale, non i singoli valori intermedi. Il campo resta
+  //      comunque modificabile manualmente dall'admin (come il Punteggio
+  //      Normalizzato): questo è solo il valore di default proposto. ----
   const valoriForza = [];
   inclusi.forEach(p=>{
     [p.forzaIngresso, p.forzaCentro, p.forzaFinale].forEach(v=>{
       if(typeof v === 'number' && !isNaN(v)) valoriForza.push(v);
     });
   });
-  if(valoriForza.length){
-    const mediaForza = valoriForza.reduce((s,v)=>s+v,0) / valoriForza.length;
-    _esitoForzaCalcolata = Math.round(mediaForza);
-    forzaEl.textContent = _esitoForzaCalcolata;
+  const forzaCalcolataDiDefault = valoriForza.length
+    ? Math.round(valoriForza.reduce((s,v)=>s+v,0) / valoriForza.length)
+    : null;
+  if(typeof forzaDaRipristinare === 'number'){
+    forzaEl.value = forzaDaRipristinare;
   }else{
-    _esitoForzaCalcolata = null;
-    forzaEl.textContent = 'n/d';
+    forzaEl.value = (forzaCalcolataDiDefault !== null) ? forzaCalcolataDiDefault : '';
   }
 
   if(inclusi.length === 0){
@@ -2070,8 +2084,6 @@ function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
   rangeEl.textContent = band.range;
   normEl.value = (typeof normalizzatoDaRipristinare === 'number') ? normalizzatoDaRipristinare : band.idx;
 }
-
-let _esitoForzaCalcolata = null;
 
 
 
@@ -2213,6 +2225,8 @@ function buildPromptValutazioneGlobale(panelisti){
 }
 
 function copiaPromptClaude(panelNumero, sigaroNumero){
+  panelNumero = panelNumero || _esitoCurrentPanelNumero;
+  sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
   const status = document.getElementById('esitoValStatus');
   const panelisti = estraiPanelistiSigaro(sigaroNumero);
   if(panelisti.length === 0){
@@ -2273,6 +2287,8 @@ function applicaRispostaIncollata(){
 }
 
 async function esportaInWord(panelNumero, sigaroNumero){
+  panelNumero = panelNumero || _esitoCurrentPanelNumero;
+  sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
   const status = document.getElementById('esitoValStatus');
   status.textContent = 'Generazione del documento Word in corso\u2026';
   status.style.color = '#5a4632';
@@ -2446,7 +2462,7 @@ async function esportaInWord(panelNumero, sigaroNumero){
       blocco = sostituisci(blocco, '&lt;da campo vitola de galera&gt;', xEsc(vitolaGalera));
       blocco = sostituisci(blocco, '&lt;da campo misura RG&gt;', xEsc(misuraRg));
       blocco = sostituisci(blocco, '&lt;da campo misura mm&gt;', xEsc(misuraMm));
-      blocco = sostituisci(blocco, '&lt;da campo prezzo in euro&gt;', xEsc(prezzo));
+      blocco = sostituisci(blocco, '&lt;da campo prezzo in euro&gt;', xEsc(prezzo ? (prezzo + ' \u20ac') : ''));
       // Forza e flag OK!/Best Buy: valori reali calcolati/scelti dall'admin
       // in "Esito Panel" e salvati nel report XML tramite "Salva nel Report".
       blocco = sostituisci(blocco, '&lt;da campo forza&gt;', xEsc(forzaCalcolataTesto));
@@ -2537,6 +2553,8 @@ async function esportaInWord(panelNumero, sigaroNumero){
 }
 
 async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
+  panelNumero = panelNumero || _esitoCurrentPanelNumero;
+  sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
   const ita = document.getElementById('esitoValIta').value;
   const eng = document.getElementById('esitoValEng').value;
   const status = document.getElementById('esitoValStatus');
@@ -2607,7 +2625,9 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   // Forza calcolata (media aritmetica di tutti i terzi dei panelist inclusi,
   // arrotondata solo sul risultato finale) e flag OK!/Best Buy scelti dall'admin.
   const forzaNode = _esitoReportDoc.createElement('forza_calcolata');
-  forzaNode.textContent = (typeof _esitoForzaCalcolata === 'number') ? String(_esitoForzaCalcolata) : '';
+  const forzaInput = document.getElementById('esitoForzaValue');
+  const forzaValore = forzaInput ? parseInt(forzaInput.value, 10) : NaN;
+  forzaNode.textContent = isNaN(forzaValore) ? '' : String(forzaValore);
   sigaroEl.appendChild(forzaNode);
 
   const flagOkNode = _esitoReportDoc.createElement('flag_ok');
@@ -2664,13 +2684,6 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   }
 }
 
-function formatBytes(n){
-  if(n == null) return '—';
-  if(n < 1024) return n + ' B';
-  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
-  return (n/1024/1024).toFixed(2) + ' MB';
-}
-
 function sanitizeFileNamePart(s){
   return String(s||'')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -2704,8 +2717,8 @@ function renderReportsOverview(fileMap){
       <td data-label="Generato il">${formatDateTime(f.updated_at || f.created_at)}</td>
       <td data-label="Azioni">
         <div class="row-actions">
-          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${escapeHtml(f.name)}')">Scarica</button>
-          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${escapeHtml(f.name)}')">Elimina</button>
+          <button class="btn btn-small btn-ghost" data-filename="${escapeHtml(f.name)}" onclick="downloadArchiveFile(this.dataset.filename)">Scarica</button>
+          <button class="btn btn-small btn-danger" data-filename="${escapeHtml(f.name)}" onclick="deleteArchiveFile(this.dataset.filename)">Elimina</button>
         </div>
       </td>
     `;
@@ -2785,10 +2798,10 @@ async function loadArchiveTable(){
       <div class="cig-no">Panel ${escapeHtml(panel.numero)}</div>
       <div class="cig-date">${doneCount} / ${rows.length} sottomissioni completate</div>
       <div class="card-actions" style="margin-top:14px;flex-wrap:wrap;">
-        <button class="btn btn-small btn-primary" onclick="generatePanelReport('${panel.id}')">Genera Report Unico</button>
+        <button class="btn btn-small btn-primary" data-panel-id="${panel.id}" onclick="generatePanelReport(this.dataset.panelId)">Genera Report Unico</button>
         ${reportFile ? `
-          <button class="btn btn-small btn-ghost" onclick="downloadArchiveFile('${reportFileName}')">Scarica Report</button>
-          <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${reportFileName}')">Elimina Report</button>
+          <button class="btn btn-small btn-ghost" data-filename="${escapeHtml(reportFileName)}" onclick="downloadArchiveFile(this.dataset.filename)">Scarica Report</button>
+          <button class="btn btn-small btn-danger" data-filename="${escapeHtml(reportFileName)}" onclick="deleteArchiveFile(this.dataset.filename)">Elimina Report</button>
         ` : ''}
       </div>
       ${reportFile ? `<div class="subtle" style="margin-top:6px;">Report generato il ${formatDateTime(reportFile.updated_at || reportFile.created_at)}</div>` : ''}
@@ -2807,8 +2820,8 @@ async function loadArchiveTable(){
               <td data-label="Azioni">
                 ${r.completato ? `
                   <div class="row-actions">
-                    <button class="btn btn-small btn-ghost" onclick="riapriPanelInModifica('${r.fileName}')">Riapri in Modifica</button>
-                    <button class="btn btn-small btn-danger" onclick="deleteArchiveFile('${r.fileName}')">Elimina</button>
+                    <button class="btn btn-small btn-ghost" data-filename="${escapeHtml(r.fileName)}" onclick="riapriPanelInModifica(this.dataset.filename)">Riapri in Modifica</button>
+                    <button class="btn btn-small btn-danger" data-filename="${escapeHtml(r.fileName)}" onclick="deleteArchiveFile(this.dataset.filename)">Elimina</button>
                   </div>
                 ` : '<span class="subtle">In attesa di sottomissione</span>'}
               </td>

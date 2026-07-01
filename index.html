@@ -370,30 +370,6 @@ footer.foot{
         <button class="btn btn-primary" onclick="doLogin()">Accedi</button>
       </div>
     </div>
-
-    <div id="registerForm" class="hidden">
-      <div class="field">
-        <label>Nome e Cognome (Panelist)</label>
-        <input id="rg-name" type="text" placeholder="es. Guido Balzano">
-      </div>
-      <div class="field">
-        <label>Nome Utente (per visualizzazione)</label>
-        <input id="rg-user" type="text" placeholder="es. gbalzano">
-      </div>
-      <div class="field">
-        <label>Email</label>
-        <input id="rg-email" type="email" placeholder="es. nome@esempio.it">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input id="rg-pass" type="password" placeholder="scegli una password">
-      </div>
-      <div class="err" id="rg-err"></div>
-      <div class="login-actions">
-        <button class="btn btn-primary" onclick="doRegister()">Crea account</button>
-      </div>
-      <div class="toggle-row"><span onclick="showLogin()">← Torna al login</span></div>
-    </div>
   </div>
 </div>
 
@@ -766,32 +742,10 @@ function confirmModalCancel(){
 /* ============================================================
    AUTH
    ============================================================ */
-function showRegister(){
-  document.getElementById('loginForm').classList.add('hidden');
-  document.getElementById('registerForm').classList.remove('hidden');
-}
-function showLogin(){
-  document.getElementById('registerForm').classList.add('hidden');
-  document.getElementById('loginForm').classList.remove('hidden');
-}
-
-async function doRegister(){
-  const full_name = document.getElementById('rg-name').value.trim();
-  const username = document.getElementById('rg-user').value.trim().toLowerCase();
-  const email = document.getElementById('rg-email').value.trim().toLowerCase();
-  const pass = document.getElementById('rg-pass').value;
-  const err = document.getElementById('rg-err');
-  err.textContent = '';
-  if(!full_name || !username || !email || !pass){ err.textContent = 'Compila tutti i campi.'; return; }
-  if(pass.length < 6){ err.textContent = 'La password deve avere almeno 6 caratteri.'; return; }
-
-  const { data, error } = await sb.auth.signUp({
-    email, password: pass,
-    options: { data: { username, full_name, role: 'degustatore' } }
-  });
-  if(error){ err.textContent = traduciErroreAuth(error); return; }
-  await afterAuthSuccess();
-}
+// La registrazione pubblica (self sign-up) è stata rimossa: era codice
+// presente ma irraggiungibile dalla UI (nessun bottone/link portava al
+// form di registrazione). Gli account Panelist vengono creati solo
+// dall'amministratore, tramite admin.html.
 
 async function doLogin(){
   const email = document.getElementById('li-email').value.trim().toLowerCase();
@@ -803,13 +757,6 @@ async function doLogin(){
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
   if(error){ err.textContent = 'Email o password non corretti.'; return; }
   await afterAuthSuccess();
-}
-
-function traduciErroreAuth(error){
-  const m = (error && error.message) || '';
-  if(m.includes('already registered')) return 'Email già registrata.';
-  if(m.includes('Password')) return 'Password non valida (minimo 6 caratteri).';
-  return 'Errore: ' + m;
 }
 
 async function afterAuthSuccess(){
