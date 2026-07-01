@@ -502,7 +502,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <div id="sigariBlock" class="hidden">
         <div class="inline-form">
           <div class="field"><label>Numero sigaro</label><input type="text" id="ns-numero" placeholder="es. 14"></div>
-          <button class="btn btn-primary" onclick="addSigaro()">＋ Aggiungi Sigaro</button>
+          <button class="btn btn-primary" onclick="apriModaleNuovoSigaro()">＋ Aggiungi Sigaro</button>
         </div>
         <table class="admin-table">
           <thead><tr><th>Sigaro n.</th><th>Assegnato a</th><th></th></tr></thead>
@@ -631,6 +631,47 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
         <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
           <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="closeEditUserModal()">Annulla</button>
           <button class="btn btn-primary" onclick="saveEditedUser()">Salva Modifiche</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODALE CARTA D'IDENTITÀ DEL SIGARO (anagrafica, solo Admin) ===== -->
+    <div id="sigaroAnagraficaModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1006;padding:20px;">
+      <div style="background:var(--login-bg);color:var(--login-ink);max-width:560px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;max-height:88vh;overflow-y:auto;">
+        <strong id="sa-title" style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:6px;">Carta d'Identità del Sigaro</strong>
+        <div class="subtle" style="margin-bottom:18px;color:#5a4632;">Visibile e modificabile solo dall'amministratore. Il Panelist non vede queste informazioni.</div>
+
+        <input type="hidden" id="sa-sigaro-id">
+        <input type="hidden" id="sa-panel-id">
+        <input type="hidden" id="sa-foto-path-esistente">
+
+        <div class="field"><label>Numero Sigaro</label><input type="text" id="sa-numero-sigaro" readonly style="background:#eee;color:#1c1712;border:1px solid #ccc;"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">
+          <div class="field"><label>Produttore</label><input type="text" id="sa-produttore" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Vitola de Salida</label><input type="text" id="sa-vitola-salida" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Paese</label><input type="text" id="sa-paese" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Capa</label><input type="text" id="sa-capa" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Capote</label><input type="text" id="sa-capote" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Tripa</label><input type="text" id="sa-tripa" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Vitola de Galera</label><input type="text" id="sa-vitola-galera" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Prezzo (€)</label><input type="number" step="0.01" min="0" id="sa-prezzo" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Misura RG</label><input type="number" step="0.01" min="0" id="sa-misura-rg" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+          <div class="field"><label>Misura mm</label><input type="number" step="0.01" min="0" id="sa-misura-mm" style="background:#fff;color:#1c1712;border:1px solid #ccc;"></div>
+        </div>
+
+        <div class="field">
+          <label>Foto del Sigaro</label>
+          <div id="sa-foto-preview-wrap" class="hidden" style="margin-bottom:8px;">
+            <img id="sa-foto-preview" src="" style="max-width:100%;max-height:160px;border:1px solid #ccc;display:block;">
+          </div>
+          <input type="file" id="sa-foto" accept="image/*" style="background:#fff;color:#1c1712;border:1px solid #ccc;padding:6px;">
+        </div>
+
+        <div id="sa-err" style="color:#b5202c;font-weight:600;font-size:12.5px;min-height:14px;margin:6px 0 8px;"></div>
+        <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn" style="border-color:var(--login-ink);color:var(--login-ink);" onclick="chiudiModaleAnagrafica()">Annulla</button>
+          <button class="btn btn-primary" id="sa-save-btn" onclick="salvaAnagraficaSigaro()">Salva</button>
         </div>
       </div>
     </div>
@@ -969,22 +1010,17 @@ async function renderSigariTable(){
     tr.innerHTML = `
       <td data-label="Sigaro n.">Sigaro n. ${escapeHtml(s.numero_sigaro)}</td>
       <td data-label="Assegnato a">${ass.length? escapeHtml(ass.join(', ')) : '<span class="subtle">Nessuno</span>'}</td>
-      <td data-label="Azioni"><button class="btn btn-small btn-danger" onclick="deleteSigaro(${s.id})">Elimina</button></td>
+      <td data-label="Azioni" style="white-space:nowrap;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-small" onclick="apriModaleAnagraficaEsistente(${s.id}, '${escapeHtml(s.numero_sigaro)}')">Anagrafica</button>
+        <button class="btn btn-small btn-danger" onclick="deleteSigaro(${s.id})">Elimina</button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-async function addSigaro(){
-  const numero_sigaro = document.getElementById('ns-numero').value.trim();
-  if(!numero_sigaro || !_selectedSigariPanelId){ showAlert('Inserisci un numero sigaro valido.'); return; }
-  const { error } = await sb.from('sigari').insert({ panel_id: _selectedSigariPanelId, numero_sigaro });
-  if(error){ showAlert('Errore: ' + error.message); return; }
-  document.getElementById('ns-numero').value = '';
-  await renderSigariTable();
-  await loadPanelsTable();
-  await populateAssignSelectors();
-}
+// addSigaro() è stata sostituita da apriModaleNuovoSigaro() + salvaAnagraficaSigaro():
+// ora la creazione di un sigaro passa sempre dalla Carta d'Identità.
 
 function deleteSigaro(sigaroId){
   askConfirm('Eliminare questo sigaro? Verranno eliminate anche le assegnazioni e le schede collegate.', async ()=>{
@@ -994,6 +1030,144 @@ function deleteSigaro(sigaroId){
     await loadPanelsTable();
     await populateAssignSelectors();
   });
+}
+
+/* ============================================================
+   CARTA D'IDENTITÀ DEL SIGARO (anagrafica, solo Admin)
+   Tabella: sigari_anagrafica (1 sigaro = 1 anagrafica).
+   ============================================================ */
+const SIGARO_ANAGRAFICA_FOTO_PREFIX = 'sigari-foto';
+
+function resetModaleAnagraficaForm(){
+  ['sa-produttore','sa-vitola-salida','sa-paese','sa-capa','sa-capote','sa-tripa',
+   'sa-vitola-galera','sa-misura-rg','sa-misura-mm','sa-prezzo'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('sa-foto').value = '';
+  document.getElementById('sa-foto-path-esistente').value = '';
+  document.getElementById('sa-foto-preview-wrap').classList.add('hidden');
+  document.getElementById('sa-foto-preview').src = '';
+  document.getElementById('sa-err').textContent = '';
+}
+
+async function apriModaleNuovoSigaro(){
+  const numero_sigaro = document.getElementById('ns-numero').value.trim();
+  if(!numero_sigaro || !_selectedSigariPanelId){
+    showAlert('Inserisci un numero sigaro valido prima di continuare.');
+    return;
+  }
+  resetModaleAnagraficaForm();
+  document.getElementById('sa-title').textContent = "Nuovo Sigaro — Carta d'Identità";
+  document.getElementById('sa-sigaro-id').value = '';
+  document.getElementById('sa-panel-id').value = _selectedSigariPanelId;
+  document.getElementById('sa-numero-sigaro').value = numero_sigaro;
+  document.getElementById('sigaroAnagraficaModal').classList.remove('hidden');
+}
+
+async function apriModaleAnagraficaEsistente(sigaroId, numeroSigaro){
+  resetModaleAnagraficaForm();
+  document.getElementById('sa-title').textContent = 'Anagrafica Sigaro n. ' + numeroSigaro;
+  document.getElementById('sa-sigaro-id').value = sigaroId;
+  document.getElementById('sa-panel-id').value = '';
+  document.getElementById('sa-numero-sigaro').value = numeroSigaro;
+  document.getElementById('sigaroAnagraficaModal').classList.remove('hidden');
+
+  const { data, error } = await sb.from('sigari_anagrafica').select('*').eq('sigaro_id', sigaroId).maybeSingle();
+  if(error){ document.getElementById('sa-err').textContent = 'Errore nel caricamento anagrafica: ' + error.message; return; }
+  if(!data) return; // nessuna anagrafica ancora inserita per questo sigaro: form vuoto
+
+  document.getElementById('sa-produttore').value = data.produttore || '';
+  document.getElementById('sa-vitola-salida').value = data.vitola_de_salida || '';
+  document.getElementById('sa-paese').value = data.paese || '';
+  document.getElementById('sa-capa').value = data.capa || '';
+  document.getElementById('sa-capote').value = data.capote || '';
+  document.getElementById('sa-tripa').value = data.tripa || '';
+  document.getElementById('sa-vitola-galera').value = data.vitola_de_galera || '';
+  document.getElementById('sa-misura-rg').value = data.misura_rg ?? '';
+  document.getElementById('sa-misura-mm').value = data.misura_mm ?? '';
+  document.getElementById('sa-prezzo').value = data.prezzo ?? '';
+  document.getElementById('sa-foto-path-esistente').value = data.foto_path || '';
+
+  if(data.foto_path){
+    try{
+      const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(data.foto_path, 120);
+      if(!signErr && signedData?.signedUrl){
+        document.getElementById('sa-foto-preview').src = signedData.signedUrl;
+        document.getElementById('sa-foto-preview-wrap').classList.remove('hidden');
+      }
+    }catch(e){ console.error('Errore anteprima foto:', e); }
+  }
+}
+
+function chiudiModaleAnagrafica(){
+  document.getElementById('sigaroAnagraficaModal').classList.add('hidden');
+}
+
+async function salvaAnagraficaSigaro(){
+  const errEl = document.getElementById('sa-err');
+  errEl.textContent = '';
+  const saveBtn = document.getElementById('sa-save-btn');
+  saveBtn.disabled = true;
+
+  try{
+    let sigaroId = document.getElementById('sa-sigaro-id').value;
+    const panelId = document.getElementById('sa-panel-id').value;
+    const numeroSigaro = document.getElementById('sa-numero-sigaro').value;
+
+    // Modalità creazione: il sigaro non esiste ancora in "sigari", va creato prima.
+    if(!sigaroId){
+      const { data: nuovoSigaro, error: insErr } = await sb.from('sigari')
+        .insert({ panel_id: panelId, numero_sigaro: numeroSigaro })
+        .select('id').single();
+      if(insErr){ errEl.textContent = 'Errore nella creazione del sigaro: ' + insErr.message; return; }
+      sigaroId = nuovoSigaro.id;
+    }
+
+    const parseNum = (id) => {
+      const v = document.getElementById(id).value;
+      if(v === '' || v === null) return null;
+      const n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    };
+
+    let fotoPath = document.getElementById('sa-foto-path-esistente').value || null;
+    const fotoFile = document.getElementById('sa-foto').files[0];
+    if(fotoFile){
+      const ext = (fotoFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+      const path = `${SIGARO_ANAGRAFICA_FOTO_PREFIX}/${sigaroId}.${ext}`;
+      const { error: upErr } = await sb.storage.from('panel-exports').upload(path, fotoFile, { upsert:true, contentType: fotoFile.type || 'image/jpeg' });
+      if(upErr){ errEl.textContent = 'Errore nel caricamento della foto: ' + upErr.message; return; }
+      fotoPath = path;
+    }
+
+    const payload = {
+      sigaro_id: sigaroId,
+      produttore: document.getElementById('sa-produttore').value.trim() || null,
+      vitola_de_salida: document.getElementById('sa-vitola-salida').value.trim() || null,
+      paese: document.getElementById('sa-paese').value.trim() || null,
+      capa: document.getElementById('sa-capa').value.trim() || null,
+      capote: document.getElementById('sa-capote').value.trim() || null,
+      tripa: document.getElementById('sa-tripa').value.trim() || null,
+      vitola_de_galera: document.getElementById('sa-vitola-galera').value.trim() || null,
+      misura_rg: parseNum('sa-misura-rg'),
+      misura_mm: parseNum('sa-misura-mm'),
+      prezzo: parseNum('sa-prezzo'),
+      foto_path: fotoPath,
+    };
+
+    const { error: upsertErr } = await sb.from('sigari_anagrafica').upsert(payload, { onConflict: 'sigaro_id' });
+    if(upsertErr){ errEl.textContent = 'Errore nel salvataggio anagrafica: ' + upsertErr.message; return; }
+
+    chiudiModaleAnagrafica();
+    document.getElementById('ns-numero').value = '';
+    await renderSigariTable();
+    await loadPanelsTable();
+    await populateAssignSelectors();
+  }catch(err){
+    errEl.textContent = 'Errore imprevisto: ' + err.message;
+  }finally{
+    saveBtn.disabled = false;
+  }
 }
 
 /* ============================================================
