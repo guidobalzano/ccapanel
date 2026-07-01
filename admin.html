@@ -1458,15 +1458,26 @@ async function onEsitoPanelChange(){
       return;
     }
 
-    const downloadPromise = sb.storage.from('panel-exports').download(fileName);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(()=>reject(new Error('Timeout: il server non ha risposto entro 15 secondi.')), 15000));
-    const { data, error } = await Promise.race([downloadPromise, timeoutPromise]);
-
-    if(error){
-      note.textContent = 'Nessun report trovato per questo panel ("' + fileName + '"). Generalo prima dal tab "Archivio Sottomissioni". Dettaglio: ' + error.message;
+    // Scarico il contenuto tramite URL firmata + fetch con cache:'no-store', invece di
+    // download(), per evitare che il browser (o un eventuale layer intermedio) serva
+    // bytes vecchi per lo stesso path anche dopo che il file è stato rigenerato.
+    const { data: signedData, error: signErr } = await sb.storage
+      .from('panel-exports')
+      .createSignedUrl(fileName, 60);
+    if(signErr || !signedData?.signedUrl){
+      note.textContent = 'Impossibile generare il link al report ("' + fileName + '"). Dettaglio: ' + (signErr ? signErr.message : 'URL non disponibile.');
       return;
     }
-    const text = await data.text();
+
+    const fetchPromise = fetch(signedData.signedUrl, { cache: 'no-store' });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(()=>reject(new Error('Timeout: il server non ha risposto entro 15 secondi.')), 15000));
+    const resp = await Promise.race([fetchPromise, timeoutPromise]);
+
+    if(!resp.ok){
+      note.textContent = 'Errore nel download del report ("' + fileName + '"): HTTP ' + resp.status;
+      return;
+    }
+    const text = await resp.text();
     const doc = new DOMParser().parseFromString(text, 'application/xml');
     if(doc.getElementsByTagName('parsererror').length > 0){
       note.textContent = 'Il report di questo panel non è leggibile (XML non valido). Rigeneralo.';
