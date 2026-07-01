@@ -1522,6 +1522,9 @@ function onEsitoSigaroChange(){
     const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
     const centroEl = pEl.querySelector('descrizione_fasi > centro');
     const finaleEl = pEl.querySelector('descrizione_fasi > finale');
+    const forzaIngressoTxt = estraiCampoForza(pEl, 'forza_ingresso');
+    const forzaCentroTxt = estraiCampoForza(pEl, 'forza_centro');
+    const forzaFinaleTxt = estraiCampoForza(pEl, 'forza_finale');
     return {
       nome: pEl.getAttribute('nome') || '—',
       punteggio: punteggioEl ? parseInt(punteggioEl.textContent, 10) : null,
@@ -1529,6 +1532,9 @@ function onEsitoSigaroChange(){
       ingresso1: ingressoEl ? ingressoEl.textContent : '',
       ingresso2: centroEl ? centroEl.textContent : '',
       ingresso3: finaleEl ? finaleEl.textContent : '',
+      forzaIngresso: forzaIngressoTxt ? (FORZA_SCALE[forzaIngressoTxt] || null) : null,
+      forzaCentro: forzaCentroTxt ? (FORZA_SCALE[forzaCentroTxt] || null) : null,
+      forzaFinale: forzaFinaleTxt ? (FORZA_SCALE[forzaFinaleTxt] || null) : null,
     };
   }).filter(p => p.punteggio !== null && !isNaN(p.punteggio));
 
@@ -1584,9 +1590,9 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <td data-label="Panelist">${escapeHtml(p.nome)}</td>
       <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
       <td data-label="Commenti">${escapeHtml(p.commenti) || '—'}</td>
-      <td data-label="Ingresso 1° terzo">${forzaBadge(p.forzaIngresso)}${escapeHtml(p.ingresso1) || '—'}</td>
-      <td data-label="Ingresso 2° terzo">${forzaBadge(p.forzaCentro)}${escapeHtml(p.ingresso2) || '—'}</td>
-      <td data-label="Ingresso 3° terzo">${forzaBadge(p.forzaFinale)}${escapeHtml(p.ingresso3) || '—'}</td>
+      <td data-label="Ingresso 1° terzo"><span>${forzaBadge(p.forzaIngresso)}${escapeHtml(p.ingresso1) || '—'}</span></td>
+      <td data-label="Ingresso 2° terzo"><span>${forzaBadge(p.forzaCentro)}${escapeHtml(p.ingresso2) || '—'}</span></td>
+      <td data-label="Ingresso 3° terzo"><span>${forzaBadge(p.forzaFinale)}${escapeHtml(p.ingresso3) || '—'}</span></td>
     </tr>
   `).join('');
 
