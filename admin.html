@@ -1557,12 +1557,7 @@ function aggiornaConteggioCaratteri(textareaId, counterId){
 }
 
 function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
-  const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
-  const minP = sorted[0];
-  const maxP = sorted[sorted.length-1];
-
   _esitoPanelistiCorrenti = panelisti;
-  _esitoChartData = { panelisti, minP, maxP };
 
   const tableRows = panelisti.map(p=>`
     <tr>
@@ -1593,11 +1588,6 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
           <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Commenti</th><th>Ingresso 1° terzo</th><th>Ingresso 2° terzo</th><th>Ingresso 3° terzo</th></tr></thead>
           <tbody>${tableRows}</tbody>
         </table>
-      </div>
-
-      <div style="margin-top:30px;width:100%;box-sizing:border-box;">
-        <div class="block-title cap" style="margin-bottom:14px;">Distribuzione Punteggi</div>
-        <div id="esitoChartHost" style="width:100%;box-sizing:border-box;"></div>
       </div>
 
       <div style="margin-top:34px;">
@@ -1699,7 +1689,6 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
 }
 
 let _esitoPanelistiCorrenti = [];
-let _esitoChartData = null;
 
 /**
  * Ricalcola Score (media aritmetica dei punteggi dei panelist con la checkbox
@@ -1725,7 +1714,6 @@ function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
     puntEl.textContent = '—';
     rangeEl.textContent = '';
     normEl.value = '';
-    if(_esitoChartData) renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, null);
     return;
   }
 
@@ -1737,91 +1725,8 @@ function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
   puntEl.textContent = band.idx;
   rangeEl.textContent = band.range;
   normEl.value = (typeof normalizzatoDaRipristinare === 'number') ? normalizzatoDaRipristinare : band.idx;
-
-  if(_esitoChartData){
-    renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, avg);
-  }
 }
 
-const ESITO_PALETTE = ['#e0584f','#5fa8d8','#e0b04f','#8fd16f','#c46fd1','#4fcfc0','#e08fc4','#a8a849','#7a9ee0','#e0915f'];
-
-function renderEsitoChart(panelisti, minP, maxP, mean){
-  const chartHost = document.getElementById('esitoChartHost');
-  if(!chartHost) return;
-
-  if(mean === null || mean === undefined || isNaN(mean)){
-    chartHost.innerHTML = '<div class="empty-note">Seleziona almeno un Panelist nel calcolo per vedere la distribuzione.</div>';
-    return;
-  }
-
-  // Nomi correntemente ESCLUSI dal calcolo (checkbox "Presenza nel calcolo" non spuntata)
-  const esclusiNomi = new Set(
-    Array.from(document.querySelectorAll('.esito-calc-checkbox'))
-      .filter(cb=>!cb.checked)
-      .map(cb=>{ const p = _esitoPanelistiCorrenti[parseInt(cb.dataset.idx,10)]; return p ? p.nome : null; })
-      .filter(Boolean)
-  );
-
-  const W = 600, H = 200, padX = 26, padTop = 28, padBottom = 30;
-  const baseline = H - padBottom;
-  const curveTop = padTop + 6;
-
-  // Dominio SIMMETRICO rispetto alla media: la media è sempre
-  // esattamente al centro del grafico, qualunque sia la distribuzione
-  // dei punteggi. Il margine garantisce che la curva torni vicino alla
-  // base anche ai bordi (niente tagli).
-  const maxDist = Math.max(...panelisti.map(p => Math.abs(p.punteggio - mean)), 5);
-  const halfRange = maxDist + 6;
-  const domainMin = mean - halfRange;
-  const domainMax = mean + halfRange;
-  const xFor = (v) => padX + (v - domainMin) / (2 * halfRange) * (W - padX*2);
-  const sigma = halfRange / 3; // a 3 sigma dal centro la curva è già quasi a zero
-
-  let path = '';
-  for(let x=0; x<=W; x+=4){
-    const score = domainMin + (x/W) * (2 * halfRange);
-    const y = baseline - (baseline - curveTop) * Math.exp(-((score-mean)*(score-mean))/(2*sigma*sigma));
-    path += (x===0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
-  }
-
-  // colore univoco per ciascun panelist (per identità), assegnato in base
-  // all'ordine alfabetico così resta stabile tra un render e l'altro
-  const colorByName = {};
-  [...panelisti].sort((a,b)=>a.nome.localeCompare(b.nome)).forEach((p,i)=>{
-    colorByName[p.nome] = ESITO_PALETTE[i % ESITO_PALETTE.length];
-  });
-
-  const meanX = xFor(mean);
-
-  let dotsSvg = '';
-  panelisti.forEach(p=>{
-    const x = xFor(p.punteggio);
-    const isExcluded = esclusiNomi.has(p.nome);
-    const color = colorByName[p.nome];
-    dotsSvg += `<circle cx="${x.toFixed(1)}" cy="${baseline}" r="7" fill="${color}" stroke="${isExcluded ? '#fff' : 'none'}" stroke-width="${isExcluded ? 2 : 0}" stroke-dasharray="${isExcluded ? '2,2' : '0'}" />`;
-  });
-
-  chartHost.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto;background:rgba(0,0,0,.15);border-radius:4px;">
-      <path d="${path}" fill="none" stroke="#b08d4f" stroke-width="2"/>
-      <line x1="${meanX.toFixed(1)}" y1="${curveTop-8}" x2="${meanX.toFixed(1)}" y2="${baseline}" stroke="#ecd49f" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <text x="${meanX.toFixed(1)}" y="${curveTop-12}" text-anchor="middle" font-size="13" font-weight="700" fill="#ecd49f">${mean.toFixed(1)}</text>
-      <line x1="${padX}" y1="${baseline}" x2="${W-padX}" y2="${baseline}" stroke="#7d7468" stroke-width="1"/>
-      ${dotsSvg}
-    </svg>
-    <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;">
-      ${[...panelisti].sort((a,b)=>b.punteggio-a.punteggio).map(p=>{
-        const color = colorByName[p.nome];
-        const isExcluded = esclusiNomi.has(p.nome);
-        return `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;${isExcluded ? 'opacity:.75;' : ''}">
-          <span style="width:11px;height:11px;border-radius:50%;background:${color};flex:none;${isExcluded ? 'box-shadow:0 0 0 2px rgba(255,255,255,.5);' : ''}"></span>
-          <span style="color:${color};font-weight:700;">${escapeHtml(p.nome)} — ${escapeHtml(p.punteggio)}</span>
-          ${isExcluded ? '<span class="subtle" style="font-size:10.5px;">(escluso dal calcolo)</span>' : ''}
-        </div>`;
-      }).join('')}
-    </div>
-  `;
-}
 
 const FORZA_SCALE = {
   'Leggero': 1,
