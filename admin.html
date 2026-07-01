@@ -479,7 +479,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <button class="tab-btn" data-tab="archive" onclick="switchTab('archive')">3. Archivio Sottomissioni</button>
       <button class="tab-btn" data-tab="export" onclick="switchTab('export')">4. Esito Panel</button>
       <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Panelist</button>
-      <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Cambio Password</button>
+      <button class="tab-btn" data-tab="password" onclick="switchTab('password')">Configurazioni</button>
     </div>
 
     <!-- ===== TAB: PANEL & SIGARI ===== -->
@@ -635,9 +635,22 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       </div>
     </div>
 
-    <!-- ===== TAB: CAMBIO PASSWORD ===== -->
+    <!-- ===== TAB: CONFIGURAZIONI ===== -->
     <div id="tab-password" class="admin-panel hidden">
-      <div class="section-title"><h2>Cambio Password</h2><div class="rule"></div></div>
+
+      <div class="section-title"><h2>Istruzioni Supporto AI</h2><div class="rule"></div></div>
+      <div class="block-hint">
+        Queste istruzioni vengono usate come linee guida comportamentali di base ogni volta che, nel tab "4. Esito Panel", si preme il bottone "Copia Prompt": il testo qui sotto viene incluso automaticamente all'inizio del prompt generato per l'AI (es. tono da usare, cose da evitare, stile di scrittura, vincoli particolari).
+      </div>
+      <div class="inline-form" style="max-width:640px;flex-direction:column;align-items:stretch;margin-top:12px;">
+        <textarea id="aiInstructionsText" rows="7" style="width:100%;" placeholder="Es: mantieni un tono elegante e professionale, evita ripetizioni, non usare mai la stessa parola due volte nello stesso testo, evita anglicismi superflui…"></textarea>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-small" onclick="salvaAiInstructions()">Salva Istruzioni</button>
+        </div>
+        <div id="aiInstructionsStatus" class="subtle" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:36px;"><h2>Cambio Password</h2><div class="rule"></div></div>
       <div id="pw-forced-note" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid rgba(181,32,44,.4);color:#e3a3a3;font-size:13px;padding:12px 14px;border-radius:3px;margin-bottom:18px;">
         Per motivi di sicurezza devi impostare una nuova password prima di continuare.
       </div>
@@ -846,6 +859,7 @@ function switchTab(name){
   });
   if(name === 'archive'){ loadArchiveTable(); }
   if(name === 'export'){ populateExportSelector(); }
+  if(name === 'password'){ loadAiInstructions(true); }
 }
 
 /* ============================================================
@@ -856,6 +870,7 @@ async function loadEverything(){
   await loadUsersTable();
   await populateAssignSelectors();
   await populateExportSelector();
+  loadAiInstructions(false); // precarica in background, senza bloccare l'avvio
 }
 
 /* ============================================================
@@ -1783,6 +1798,63 @@ function estraiPanelistiSigaro(sigaroNumero){
   }).filter(p=>p.punteggio !== null && !isNaN(p.punteggio));
 }
 
+/* ============================================================
+   ISTRUZIONI SUPPORTO AI (Configurazioni)
+   ============================================================ */
+let _aiInstructionsText = '';
+const AI_INSTRUCTIONS_FILE = 'config/istruzioni-ai.txt';
+
+async function loadAiInstructions(renderInField){
+  const status = renderInField ? document.getElementById('aiInstructionsStatus') : null;
+  try{
+    const { data: listData, error: listErr } = await sb.storage.from('panel-exports').list('config', { search: 'istruzioni-ai.txt' });
+    const existsInList = !listErr && (listData || []).some(f => f.name === 'istruzioni-ai.txt');
+    if(!existsInList){
+      _aiInstructionsText = '';
+      if(renderInField){ document.getElementById('aiInstructionsText').value = ''; if(status) status.textContent = ''; }
+      return;
+    }
+
+    const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(AI_INSTRUCTIONS_FILE, 60);
+    if(signErr || !signedData?.signedUrl){
+      if(status){ status.textContent = 'Impossibile caricare le istruzioni salvate.'; status.style.color = '#b5202c'; }
+      return;
+    }
+    const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
+    if(!resp.ok){
+      if(status){ status.textContent = 'Errore nel caricamento delle istruzioni (HTTP ' + resp.status + ').'; status.style.color = '#b5202c'; }
+      return;
+    }
+    _aiInstructionsText = await resp.text();
+    if(renderInField){
+      document.getElementById('aiInstructionsText').value = _aiInstructionsText;
+      if(status) status.textContent = '';
+    }
+  }catch(err){
+    console.error('Errore caricamento istruzioni AI:', err);
+    if(status){ status.textContent = 'Errore: ' + err.message; status.style.color = '#b5202c'; }
+  }
+}
+
+async function salvaAiInstructions(){
+  const status = document.getElementById('aiInstructionsStatus');
+  const testo = document.getElementById('aiInstructionsText').value;
+  status.textContent = 'Salvataggio…';
+  status.style.color = '#5a4632';
+  try{
+    const blob = new Blob([testo], {type:'text/plain'});
+    const { error } = await sb.storage.from('panel-exports').upload(AI_INSTRUCTIONS_FILE, blob, { upsert:true, contentType:'text/plain' });
+    if(error){ status.textContent = 'Errore nel salvataggio: ' + error.message; status.style.color = '#b5202c'; return; }
+    _aiInstructionsText = testo;
+    status.textContent = '✓ Istruzioni salvate. Verranno usate nei prossimi "Copia Prompt".';
+    status.style.color = '#2f7a3f';
+  }catch(err){
+    status.textContent = 'Errore: ' + err.message;
+    status.style.color = '#b5202c';
+  }
+}
+
+
 function buildPromptValutazioneGlobale(panelisti){
   const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
   const minP = sorted[0];
@@ -1797,7 +1869,12 @@ function buildPromptValutazioneGlobale(panelisti){
     `- Terzo finale: ${p.ingresso3 || '—'}`
   ).join('\n\n');
 
-  return `Sei un redattore esperto di sigari. Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
+  const istruzioniBase = (_aiInstructionsText || '').trim();
+  const premessa = istruzioniBase
+    ? `Linee guida comportamentali da seguire (definite dall'amministratore in "Configurazioni → Istruzioni Supporto AI"):\n${istruzioniBase}\n\n`
+    : '';
+
+  return `${premessa}Sei un redattore esperto di sigari. Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
     `Scrivi una "Valutazione Globale" in ITALIANO che sintetizzi e amalgami questi giudizi, tenendo conto sia della valutazione complessiva che dei tre terzi di ciascun Panelist. Usa una narrazione eclettica e fantasiosa nello stile, ma NON INVENTARE alcuna informazione: sintetizza e amalgama solo ciò che è scritto. Il testo deve restare entro 500 caratteri totali (spazi inclusi, conteggio stile Microsoft Word).\n\n` +
     `Poi traduci letteralmente quel testo in INGLESE, anch'esso entro 500 caratteri (spazi inclusi).\n\n` +
     `Rispondi ESATTAMENTE in questo formato, senza markdown, senza altro testo:\n\nITALIANO:\n<testo qui>\n\nENGLISH:\n<testo qui>`;
