@@ -1056,6 +1056,24 @@ async function apriModaleNuovoSigaro(){
     showAlert('Inserisci un numero sigaro valido prima di continuare.');
     return;
   }
+
+  // Verifica di duplicato interrogando il database (non la cache in memoria),
+  // così anche se un altro admin ha appena aggiunto lo stesso numero da
+  // un'altra sessione, ce ne accorgiamo comunque.
+  const { data: esistente, error: checkErr } = await sb.from('sigari')
+    .select('id')
+    .eq('panel_id', _selectedSigariPanelId)
+    .eq('numero_sigaro', numero_sigaro)
+    .maybeSingle();
+  if(checkErr){
+    showAlert('Errore nel controllo duplicati: ' + checkErr.message);
+    return;
+  }
+  if(esistente){
+    showAlert('Il sigaro n. ' + numero_sigaro + ' esiste già in questo panel. Scegli un numero diverso, oppure usa il bottone "Anagrafica" sulla riga esistente per modificarne i dati.');
+    return;
+  }
+
   resetModaleAnagraficaForm();
   document.getElementById('sa-title').textContent = "Nuovo Sigaro — Carta d'Identità";
   document.getElementById('sa-sigaro-id').value = '';
@@ -1119,7 +1137,14 @@ async function salvaAnagraficaSigaro(){
       const { data: nuovoSigaro, error: insErr } = await sb.from('sigari')
         .insert({ panel_id: panelId, numero_sigaro: numeroSigaro })
         .select('id').single();
-      if(insErr){ errEl.textContent = 'Errore nella creazione del sigaro: ' + insErr.message; return; }
+      if(insErr){
+        if(insErr.code === '23505' || /duplicate key|unique constraint/i.test(insErr.message || '')){
+          errEl.textContent = 'Il sigaro n. ' + numeroSigaro + ' esiste già in questo panel (creato nel frattempo da un\'altra sessione). Chiudi questa finestra e usa "Anagrafica" sulla riga esistente.';
+        }else{
+          errEl.textContent = 'Errore nella creazione del sigaro: ' + insErr.message;
+        }
+        return;
+      }
       sigaroId = nuovoSigaro.id;
     }
 
