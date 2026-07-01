@@ -1448,6 +1448,16 @@ async function onEsitoPanelChange(){
   const fileName = `report_panel_${numero}.xml`;
 
   try{
+    // Verifica di esistenza autoritativa: usa list() (la stessa fonte di verità
+    // dell'Archivio Sottomissioni) PRIMA di fidarsi del download(), che in alcuni
+    // casi può restituire contenuto stantio se passa attraverso una cache.
+    const { data: listData, error: listErr } = await sb.storage.from('panel-exports').list('', { search: fileName });
+    const existsInList = !listErr && (listData || []).some(f => f.name === fileName);
+    if(!existsInList){
+      note.textContent = 'Nessun report trovato per questo panel ("' + fileName + '"). Generalo prima dal tab "Archivio Sottomissioni".';
+      return;
+    }
+
     const downloadPromise = sb.storage.from('panel-exports').download(fileName);
     const timeoutPromise = new Promise((_, reject) => setTimeout(()=>reject(new Error('Timeout: il server non ha risposto entro 15 secondi.')), 15000));
     const { data, error } = await Promise.race([downloadPromise, timeoutPromise]);
