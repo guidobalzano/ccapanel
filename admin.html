@@ -693,6 +693,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="score-bands.js"></script>
 <script>
 window.CCA_CONFIG = {
   SUPABASE_URL: 'https://bdmguivcpqdqakaextqd.supabase.co',
@@ -1546,14 +1547,8 @@ function onEsitoSigaroChange(){
   renderEsitoAnalysis(_esitoCurrentPanelNumero, sigaroNum, panelisti, host);
 }
 
-function scoreBandLabel(score){
-  if(score>=96) return {range:'96-100', idx:5};
-  if(score>=91) return {range:'91-95', idx:4};
-  if(score>=86) return {range:'86-90', idx:3};
-  if(score>=81) return {range:'81-85', idx:2};
-  if(score>=76) return {range:'76-80', idx:1};
-  return {range:'< 76', idx:0};
-}
+// scoreBandLabel(score) è ora definita in score-bands.js (fonte unica condivisa
+// con index.html) — vedi window.scoreBandLabel.
 
 function aggiornaConteggioCaratteri(textareaId, counterId){
   const val = document.getElementById(textareaId).value || '';

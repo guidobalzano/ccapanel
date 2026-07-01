@@ -623,6 +623,7 @@ footer.foot{
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="score-bands.js"></script>
 <script>
 window.CCA_CONFIG = {
   SUPABASE_URL: 'https://bdmguivcpqdqakaextqd.supabase.co',
@@ -714,11 +715,8 @@ const TRIPLE_GROUPS = {
   ]
 };
 
-const SCORE_BANDS = [
-  {min:96,max:100,label:'Eccezionale'}, {min:91,max:95,label:'Ottimo'},
-  {min:86,max:90,label:'Buono'}, {min:81,max:85,label:'Discreto'},
-  {min:76,max:80,label:'Sufficiente'}, {min:71,max:75,label:'Scadente'},
-];
+// SCORE_BANDS è ora definita in score-bands.js (fonte unica condivisa con
+// admin.html) — vedi window.SCORE_BANDS.
 
 const PANEL_STATUS_META = {
   da_avviare: {label:'Da Avviare', cls:'da-avviare'},
@@ -999,10 +997,9 @@ function updateScoreLabel(){
   const v = parseInt(document.getElementById('f-punteggio').value, 10);
   const lbl = document.getElementById('f-score-label');
   if(isNaN(v)){ lbl.textContent='—'; return; }
-  const band = SCORE_BANDS.find(b=> v>=b.min && v<=b.max);
-  if(band){ lbl.textContent = band.label + ' (' + band.min + '-' + band.max + ')'; }
-  else if(v < 71){ lbl.textContent = 'Presenza di difetti'; }
-  else { lbl.textContent = '—'; }
+  const band = scoreBandFind(v);
+  if(band){ lbl.textContent = band.label + ' (' + band.min + '-' + band.max + ') · Punteggio ' + band.punteggio; }
+  else{ lbl.textContent = '—'; }
 }
 
 /* ============================================================
