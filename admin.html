@@ -1563,14 +1563,15 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <td data-label="Panelist">${escapeHtml(p.nome)}</td>
       <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
       <td data-label="Commenti">${escapeHtml(p.commenti) || '—'}</td>
-      <td data-label="Ingresso 1° terzo">${escapeHtml(p.ingresso1) || '—'}</td>
-      <td data-label="Ingresso 2° terzo">${escapeHtml(p.ingresso2) || '—'}</td>
-      <td data-label="Ingresso 3° terzo">${escapeHtml(p.ingresso3) || '—'}</td>
+      <td data-label="Ingresso 1° terzo">${forzaBadge(p.forzaIngresso)}${escapeHtml(p.ingresso1) || '—'}</td>
+      <td data-label="Ingresso 2° terzo">${forzaBadge(p.forzaCentro)}${escapeHtml(p.ingresso2) || '—'}</td>
+      <td data-label="Ingresso 3° terzo">${forzaBadge(p.forzaFinale)}${escapeHtml(p.ingresso3) || '—'}</td>
     </tr>
   `).join('');
 
   host.innerHTML = `
     <div class="sheet" style="margin-top:6px;">
+      <div class="block-hint" style="margin-bottom:10px;">Il numero colorato indica la Forza dichiarata (1=Leggero … 5=Forte) per quel terzo.</div>
       <div style="overflow-x:auto;">
         <table class="admin-table" style="min-width:600px;">
           <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Commenti</th><th>Ingresso 1° terzo</th><th>Ingresso 2° terzo</th><th>Ingresso 3° terzo</th></tr></thead>
@@ -1745,6 +1746,19 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
   `;
 }
 
+const FORZA_SCALE = {
+  'Leggero': 1,
+  'Medio-Leggero': 2,
+  'Medio': 3,
+  'Medio-Forte': 4,
+  'Forte': 5,
+};
+
+function forzaBadge(n){
+  if(!n) return '';
+  return `<span style="display:inline-block;min-width:18px;text-align:center;background:var(--gold);color:var(--ink);font-weight:700;border-radius:3px;padding:1px 6px;margin-right:8px;font-size:12px;" title="Forza dichiarata: ${n}/5">${n}</span>`;
+}
+
 function estraiPanelistiSigaro(sigaroNumero){
   const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
@@ -1756,6 +1770,9 @@ function estraiPanelistiSigaro(sigaroNumero){
     const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
     const centroEl = pEl.querySelector('descrizione_fasi > centro');
     const finaleEl = pEl.querySelector('descrizione_fasi > finale');
+    const forzaIngressoEl = pEl.querySelector('forza > campo[nome="forza_ingresso"]');
+    const forzaCentroEl = pEl.querySelector('forza > campo[nome="forza_centro"]');
+    const forzaFinaleEl = pEl.querySelector('forza > campo[nome="forza_finale"]');
     return {
       nome: pEl.getAttribute('nome') || '—',
       punteggio: punteggioEl ? parseInt(punteggioEl.textContent,10) : null,
@@ -1763,6 +1780,9 @@ function estraiPanelistiSigaro(sigaroNumero){
       ingresso1: ingressoEl ? ingressoEl.textContent : '',
       ingresso2: centroEl ? centroEl.textContent : '',
       ingresso3: finaleEl ? finaleEl.textContent : '',
+      forzaIngresso: forzaIngressoEl ? (FORZA_SCALE[forzaIngressoEl.textContent.trim()] || null) : null,
+      forzaCentro: forzaCentroEl ? (FORZA_SCALE[forzaCentroEl.textContent.trim()] || null) : null,
+      forzaFinale: forzaFinaleEl ? (FORZA_SCALE[forzaFinaleEl.textContent.trim()] || null) : null,
     };
   }).filter(p=>p.punteggio !== null && !isNaN(p.punteggio));
 }
