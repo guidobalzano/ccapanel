@@ -1755,8 +1755,22 @@ const FORZA_SCALE = {
 };
 
 function forzaBadge(n){
-  if(!n) return '';
+  if(!n){
+    return `<span style="display:inline-block;min-width:18px;text-align:center;background:rgba(205,185,144,.15);color:var(--ash);font-style:italic;border-radius:3px;padding:1px 6px;margin-right:8px;font-size:11px;" title="Forza non disponibile nella scheda">n/d</span>`;
+  }
   return `<span style="display:inline-block;min-width:18px;text-align:center;background:var(--gold);color:var(--ink);font-weight:700;border-radius:3px;padding:1px 6px;margin-right:8px;font-size:12px;" title="Forza dichiarata: ${n}/5">${n}</span>`;
+}
+
+// Estrae il valore testuale di un campo dentro <forza> tramite traversal diretto del DOM
+// (evita di dipendere da querySelector con combinatori CSS su documenti XML).
+function estraiCampoForza(pEl, nomeCampo){
+  const forzaEls = pEl.getElementsByTagName('forza');
+  if(!forzaEls.length) return null;
+  const campi = Array.from(forzaEls[0].getElementsByTagName('campo'));
+  const campo = campi.find(c => c.getAttribute('nome') === nomeCampo);
+  if(!campo) return null;
+  const testo = (campo.textContent || '').trim();
+  return testo || null;
 }
 
 function estraiPanelistiSigaro(sigaroNumero){
@@ -1770,9 +1784,9 @@ function estraiPanelistiSigaro(sigaroNumero){
     const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
     const centroEl = pEl.querySelector('descrizione_fasi > centro');
     const finaleEl = pEl.querySelector('descrizione_fasi > finale');
-    const forzaIngressoEl = pEl.querySelector('forza > campo[nome="forza_ingresso"]');
-    const forzaCentroEl = pEl.querySelector('forza > campo[nome="forza_centro"]');
-    const forzaFinaleEl = pEl.querySelector('forza > campo[nome="forza_finale"]');
+    const forzaIngressoTxt = estraiCampoForza(pEl, 'forza_ingresso');
+    const forzaCentroTxt = estraiCampoForza(pEl, 'forza_centro');
+    const forzaFinaleTxt = estraiCampoForza(pEl, 'forza_finale');
     return {
       nome: pEl.getAttribute('nome') || '—',
       punteggio: punteggioEl ? parseInt(punteggioEl.textContent,10) : null,
@@ -1780,9 +1794,9 @@ function estraiPanelistiSigaro(sigaroNumero){
       ingresso1: ingressoEl ? ingressoEl.textContent : '',
       ingresso2: centroEl ? centroEl.textContent : '',
       ingresso3: finaleEl ? finaleEl.textContent : '',
-      forzaIngresso: forzaIngressoEl ? (FORZA_SCALE[forzaIngressoEl.textContent.trim()] || null) : null,
-      forzaCentro: forzaCentroEl ? (FORZA_SCALE[forzaCentroEl.textContent.trim()] || null) : null,
-      forzaFinale: forzaFinaleEl ? (FORZA_SCALE[forzaFinaleEl.textContent.trim()] || null) : null,
+      forzaIngresso: forzaIngressoTxt ? (FORZA_SCALE[forzaIngressoTxt] || null) : null,
+      forzaCentro: forzaCentroTxt ? (FORZA_SCALE[forzaCentroTxt] || null) : null,
+      forzaFinale: forzaFinaleTxt ? (FORZA_SCALE[forzaFinaleTxt] || null) : null,
     };
   }).filter(p=>p.punteggio !== null && !isNaN(p.punteggio));
 }
