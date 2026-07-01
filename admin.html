@@ -599,7 +599,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
             <option value="admin">Admin</option>
           </select>
         </div>
-        <div class="field"><label>Password iniziale</label><input type="text" id="np-password" value="cca_panel_001$$" readonly style="opacity:.75;cursor:not-allowed;"></div>
+        <div class="field"><label>Password iniziale (opzionale)</label><input type="text" id="np-password" placeholder="Lascia vuoto per usare il default"></div>
         <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Panelist</button>
       </div>
 
@@ -609,7 +609,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       </table>
 
       <div class="section-title" style="margin-top:50px;"><h2>Reset Password Rapido</h2><div class="rule"></div></div>
-      <div class="block-hint">Reimposta la password di un Panelist al valore di default: <strong>cca_panel_001$$</strong></div>
+      <div class="block-hint">Reimposta la password di un Panelist al valore di default del sistema (viene mostrata dopo il reset, da comunicare fuori banda).</div>
       <div class="inline-form">
         <div class="field">
           <label>Panelist</label>
@@ -738,7 +738,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
   <div id="alertModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1002;padding:20px;">
     <div style="background:var(--login-bg);color:var(--login-ink);max-width:420px;width:100%;border:1px solid var(--gold);box-shadow:0 20px 60px rgba(0,0,0,.6);padding:28px 26px;">
       <strong style="font-family:'Playfair Display',serif;font-size:16px;display:block;margin-bottom:14px;color:var(--red);">CCA Panel</strong>
-      <div id="alertModalText" style="font-size:15px;line-height:1.6;margin-bottom:22px;"></div>
+      <div id="alertModalText" style="font-size:15px;line-height:1.6;margin-bottom:22px;white-space:pre-line;"></div>
       <div style="display:flex;justify-content:flex-end;">
         <button class="btn btn-primary" onclick="closeAlertModal()">Ok</button>
       </div>
@@ -1605,21 +1605,21 @@ async function createPanelist(){
   const email = document.getElementById('np-email').value.trim();
   const telefono = document.getElementById('np-telefono').value.trim();
   const role = document.getElementById('np-role').value;
-  const password = document.getElementById('np-password').value;
+  const password = document.getElementById('np-password').value; // opzionale: se vuoto, il server usa il default
 
-  if(!nome || !cognome || !email || !password){
-    showAlert('Compila almeno nome, cognome, email e password.');
+  if(!nome || !cognome || !email){
+    showAlert('Compila almeno nome, cognome ed email.');
     return;
   }
-  if(password.length < 6){
-    showAlert('La password deve avere almeno 6 caratteri.');
+  if(password && password.length < 6){
+    showAlert('Se specificata, la password deve avere almeno 6 caratteri.');
     return;
   }
 
   try{
-    await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password });
-    showAlert('Panelist creato con successo. Dovrà cambiare la password al primo accesso.');
-    ['np-nome','np-cognome','np-email','np-telefono'].forEach(id=>document.getElementById(id).value='');
+    const result = await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password: password || undefined });
+    showAlert('Panelist creato con successo.\nPassword iniziale: ' + result.password + '\nDovrà cambiarla al primo accesso.');
+    ['np-nome','np-cognome','np-email','np-telefono','np-password'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('np-role').value = 'degustatore';
     await loadUsersTable();
   }catch(err){
@@ -1698,17 +1698,15 @@ function deletePanelist(userId){
   });
 }
 
-const DEFAULT_PASSWORD = 'cca_panel_001$$';
-
 function resetToDefaultPassword(){
   const sel = document.getElementById('rp-utente');
   const userId = sel.value;
   const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
   if(!userId) return;
-  askConfirm('Reimpostare la password di ' + label + ' al valore di default "' + DEFAULT_PASSWORD + '"?', async ()=>{
+  askConfirm('Reimpostare la password di ' + label + ' al valore di default?', async ()=>{
     try{
-      await callAdminUsersFunction({ action:'reset_password', user_id:userId, new_password: DEFAULT_PASSWORD });
-      showAlert('Password reimpostata al valore di default per ' + label + '.');
+      const result = await callAdminUsersFunction({ action:'reset_to_default', user_id:userId });
+      showAlert('Password reimpostata per ' + label + '.\nNuova password: ' + result.password + '\nComunicala al Panelist: dovrà cambiarla al primo accesso.');
     }catch(err){
       showAlert('Errore nel reset password: ' + err.message);
     }
