@@ -1561,23 +1561,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   const minP = sorted[0];
   const maxP = sorted[sorted.length-1];
 
-  // Media Gaussiana: esclude un'occorrenza del minimo e del massimo, arrotondamento standard
-  const trimmed = panelisti.length > 2
-    ? panelisti.filter(p => p !== minP && p !== maxP)
-    : panelisti;
-  const gaussianaAvg = trimmed.reduce((s,p)=>s+p.punteggio,0) / trimmed.length;
-  const gaussianaScore = Math.round(gaussianaAvg);
-  const gaussianaBand = scoreBandLabel(gaussianaScore);
-
-  // Media Totale: tutti i punteggi, arrotondamento per eccesso (roundup)
-  const totaleAvg = panelisti.reduce((s,p)=>s+p.punteggio,0) / panelisti.length;
-  const totaleScore = Math.ceil(totaleAvg);
-  const totaleBand = scoreBandLabel(totaleScore);
-
-  _esitoCalc = {
-    gaussiana: { avg: gaussianaAvg, band: gaussianaBand },
-    totale: { avg: totaleAvg, band: totaleBand },
-  };
+  _esitoPanelistiCorrenti = panelisti;
   _esitoChartData = { panelisti, minP, maxP };
 
   const tableRows = panelisti.map(p=>`
@@ -1588,6 +1572,16 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <td data-label="Ingresso 1° terzo"><span>${forzaBadge(p.forzaIngresso)}${escapeHtml(p.ingresso1) || '—'}</span></td>
       <td data-label="Ingresso 2° terzo"><span>${forzaBadge(p.forzaCentro)}${escapeHtml(p.ingresso2) || '—'}</span></td>
       <td data-label="Ingresso 3° terzo"><span>${forzaBadge(p.forzaFinale)}${escapeHtml(p.ingresso3) || '—'}</span></td>
+    </tr>
+  `).join('');
+
+  const calcRows = panelisti.map((p,i)=>`
+    <tr>
+      <td data-label="Panelist">${escapeHtml(p.nome)}</td>
+      <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
+      <td data-label="Presenza nel calcolo" style="text-align:center;">
+        <input type="checkbox" class="esito-calc-checkbox" data-idx="${i}" checked onchange="ricalcolaEsitoPunteggio()" style="width:18px;height:18px;cursor:pointer;">
+      </td>
     </tr>
   `).join('');
 
@@ -1606,27 +1600,32 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         <div id="esitoChartHost" style="width:100%;box-sizing:border-box;"></div>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start;margin-top:22px;">
-        <div style="text-align:center;">
-          <div class="subtle" id="esitoScoreLabel">Score</div>
-          <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
-        </div>
-        <div style="text-align:center;">
-          <div class="subtle">Punteggio</div>
-          <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
-          <div class="subtle" id="esitoPunteggioRange"></div>
-        </div>
-      </div>
+      <div style="margin-top:34px;">
+        <div class="block-title cap" style="display:inline-block;background:var(--gold);color:var(--ink);padding:6px 14px;border-radius:2px;">Calcolo Punteggio Globale</div>
 
-      <div style="margin-top:18px;font-size:13.5px;display:flex;flex-direction:column;gap:10px;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="radio" name="esitoCalcMode" value="gaussiana" checked onchange="onEsitoCalcModeChange()">
-          <span>Media Gaussiana</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="radio" name="esitoCalcMode" value="totale" onchange="onEsitoCalcModeChange()">
-          <span>Media Totale</span>
-        </label>
+        <div style="overflow-x:auto;margin-top:18px;">
+          <table class="admin-table" style="min-width:420px;max-width:520px;">
+            <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
+            <tbody id="esitoCalcTableBody">${calcRows}</tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start;margin-top:26px;">
+          <div style="text-align:center;">
+            <div class="subtle">Score (valore medio)</div>
+            <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
+          </div>
+          <div style="text-align:center;">
+            <div class="subtle">Punteggio</div>
+            <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
+            <div class="subtle" id="esitoPunteggioRange"></div>
+          </div>
+          <div style="text-align:center;">
+            <div class="subtle">Punteggio Normalizzato</div>
+            <input type="number" id="esitoPunteggioNormalizzato" min="1" max="5" step="1"
+              style="margin-top:6px;width:74px;text-align:center;font-family:'Playfair Display',serif;font-size:26px;color:var(--red);background:transparent;border:1px solid var(--gold);border-radius:3px;padding:4px 0;">
+          </div>
+        </div>
       </div>
 
       <div style="margin-top:34px;">
@@ -1661,7 +1660,31 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
     </div>
   `;
 
-  aggiornaVisualizzazioneScore('gaussiana');
+  // Ripristina eventuali esclusioni dal calcolo e il Punteggio Normalizzato
+  // già salvati in precedenza per questo sigaro; altrimenti calcola i valori di default.
+  const sigariRestore = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
+  const sigaroElRestore = sigariRestore.find(s=>s.getAttribute('numero')===sigaroNumero);
+  let esclusiSalvati = [];
+  let normalizzatoSalvato = null;
+  if(sigaroElRestore){
+    const esclusiEl = sigaroElRestore.getElementsByTagName('panelisti_esclusi')[0];
+    if(esclusiEl && esclusiEl.textContent.trim()){
+      esclusiSalvati = esclusiEl.textContent.split('|').map(s=>s.trim()).filter(Boolean);
+    }
+    const puntEl = sigaroElRestore.getElementsByTagName('punteggio_finale_combinato')[0];
+    if(puntEl && puntEl.textContent.trim() !== ''){
+      const n = parseInt(puntEl.textContent, 10);
+      if(!isNaN(n)) normalizzatoSalvato = n;
+    }
+  }
+  if(esclusiSalvati.length){
+    document.querySelectorAll('.esito-calc-checkbox').forEach(cb=>{
+      const idx = parseInt(cb.dataset.idx, 10);
+      const p = _esitoPanelistiCorrenti[idx];
+      if(p && esclusiSalvati.includes(p.nome)) cb.checked = false;
+    });
+  }
+  ricalcolaEsitoPunteggio(normalizzatoSalvato);
 
   const sigari = Array.from(_esitoReportDoc.getElementsByTagName('gruppo_sigaro'));
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
@@ -1675,29 +1698,48 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   }
 }
 
-let _esitoCalc = null;
+let _esitoPanelistiCorrenti = [];
 let _esitoChartData = null;
 
-function onEsitoCalcModeChange(){
-  const mode = document.querySelector('input[name="esitoCalcMode"]:checked').value;
-  aggiornaVisualizzazioneScore(mode);
-}
+/**
+ * Ricalcola Score (media aritmetica dei punteggi dei panelist con la checkbox
+ * "Presenza nel calcolo" spuntata) e il Punteggio corrispondente (fasce 1-5,
+ * vedi score-bands.js). Il campo "Punteggio Normalizzato" viene riportato al
+ * valore calcolato, a meno che non si passi esplicitamente un valore da
+ * ripristinare (usato al primo caricamento di un sigaro già salvato).
+ */
+function ricalcolaEsitoPunteggio(normalizzatoDaRipristinare){
+  const checkboxes = Array.from(document.querySelectorAll('.esito-calc-checkbox'));
+  const inclusi = checkboxes
+    .filter(cb=>cb.checked)
+    .map(cb=>_esitoPanelistiCorrenti[parseInt(cb.dataset.idx,10)])
+    .filter(Boolean);
 
-function aggiornaVisualizzazioneScore(mode){
-  if(!_esitoCalc) return;
-  const calc = _esitoCalc[mode];
-  const labelEl = document.getElementById('esitoScoreLabel');
   const valueEl = document.getElementById('esitoScoreValue');
   const puntEl = document.getElementById('esitoPunteggioValue');
   const rangeEl = document.getElementById('esitoPunteggioRange');
+  const normEl = document.getElementById('esitoPunteggioNormalizzato');
 
-  labelEl.textContent = mode === 'gaussiana' ? 'Score (valore medio gaussiano)' : 'Score (media totale)';
-  valueEl.textContent = calc.avg.toFixed(1);
-  puntEl.textContent = calc.band.idx;
-  rangeEl.textContent = calc.band.range;
+  if(inclusi.length === 0){
+    valueEl.textContent = '—';
+    puntEl.textContent = '—';
+    rangeEl.textContent = '';
+    normEl.value = '';
+    if(_esitoChartData) renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, null);
+    return;
+  }
+
+  const avg = inclusi.reduce((s,p)=>s+p.punteggio,0) / inclusi.length;
+  const scoreRounded = Math.round(avg);
+  const band = scoreBandLabel(scoreRounded);
+
+  valueEl.textContent = avg.toFixed(1);
+  puntEl.textContent = band.idx;
+  rangeEl.textContent = band.range;
+  normEl.value = (typeof normalizzatoDaRipristinare === 'number') ? normalizzatoDaRipristinare : band.idx;
 
   if(_esitoChartData){
-    renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, calc.avg);
+    renderEsitoChart(_esitoChartData.panelisti, _esitoChartData.minP, _esitoChartData.maxP, avg);
   }
 }
 
@@ -1706,6 +1748,19 @@ const ESITO_PALETTE = ['#e0584f','#5fa8d8','#e0b04f','#8fd16f','#c46fd1','#4fcfc
 function renderEsitoChart(panelisti, minP, maxP, mean){
   const chartHost = document.getElementById('esitoChartHost');
   if(!chartHost) return;
+
+  if(mean === null || mean === undefined || isNaN(mean)){
+    chartHost.innerHTML = '<div class="empty-note">Seleziona almeno un Panelist nel calcolo per vedere la distribuzione.</div>';
+    return;
+  }
+
+  // Nomi correntemente ESCLUSI dal calcolo (checkbox "Presenza nel calcolo" non spuntata)
+  const esclusiNomi = new Set(
+    Array.from(document.querySelectorAll('.esito-calc-checkbox'))
+      .filter(cb=>!cb.checked)
+      .map(cb=>{ const p = _esitoPanelistiCorrenti[parseInt(cb.dataset.idx,10)]; return p ? p.nome : null; })
+      .filter(Boolean)
+  );
 
   const W = 600, H = 200, padX = 26, padTop = 28, padBottom = 30;
   const baseline = H - padBottom;
@@ -1741,7 +1796,7 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
   let dotsSvg = '';
   panelisti.forEach(p=>{
     const x = xFor(p.punteggio);
-    const isExcluded = (p === minP || p === maxP);
+    const isExcluded = esclusiNomi.has(p.nome);
     const color = colorByName[p.nome];
     dotsSvg += `<circle cx="${x.toFixed(1)}" cy="${baseline}" r="7" fill="${color}" stroke="${isExcluded ? '#fff' : 'none'}" stroke-width="${isExcluded ? 2 : 0}" stroke-dasharray="${isExcluded ? '2,2' : '0'}" />`;
   });
@@ -1757,11 +1812,11 @@ function renderEsitoChart(panelisti, minP, maxP, mean){
     <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;">
       ${[...panelisti].sort((a,b)=>b.punteggio-a.punteggio).map(p=>{
         const color = colorByName[p.nome];
-        const isExcluded = (p === minP || p === maxP);
+        const isExcluded = esclusiNomi.has(p.nome);
         return `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;${isExcluded ? 'opacity:.75;' : ''}">
           <span style="width:11px;height:11px;border-radius:50%;background:${color};flex:none;${isExcluded ? 'box-shadow:0 0 0 2px rgba(255,255,255,.5);' : ''}"></span>
           <span style="color:${color};font-weight:700;">${escapeHtml(p.nome)} — ${escapeHtml(p.punteggio)}</span>
-          ${isExcluded ? '<span class="subtle" style="font-size:10.5px;">(escluso dalla media gaussiana)</span>' : ''}
+          ${isExcluded ? '<span class="subtle" style="font-size:10.5px;">(escluso dal calcolo)</span>' : ''}
         </div>`;
       }).join('')}
     </div>
@@ -1992,10 +2047,10 @@ async function esportaInWord(panelNumero, sigaroNumero){
       const numeroPadded = /^\d+$/.test(numeroRaw) ? numeroRaw.padStart(2,'0') : numeroRaw;
 
       const puntEl = sigaroEl.getElementsByTagName('punteggio_finale_combinato')[0];
-      const avgVal = puntEl ? parseFloat(puntEl.textContent) : NaN;
-      const metodo = puntEl ? (puntEl.getAttribute('metodo') || 'gaussiana') : 'gaussiana';
-      const scoreRounded = metodo === 'totale' ? Math.ceil(avgVal) : Math.round(avgVal);
-      const band = isNaN(scoreRounded) ? {idx:''} : scoreBandLabel(scoreRounded);
+      // punteggio_finale_combinato contiene ora direttamente il Punteggio
+      // Normalizzato (intero 1-5) impostato dall'admin in "Esito Panel".
+      const punteggioNormalizzato = puntEl ? parseInt(puntEl.textContent, 10) : NaN;
+      const band = { idx: isNaN(punteggioNormalizzato) ? '' : punteggioNormalizzato };
 
       const itaEl = sigaroEl.getElementsByTagName('valutazione_globale_ita')[0];
       const engEl = sigaroEl.getElementsByTagName('valutazione_globale_eng')[0];
@@ -2053,11 +2108,20 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   const sigaroEl = sigari.find(s=>s.getAttribute('numero')===sigaroNumero);
   if(!sigaroEl){ status.textContent = 'Errore: sigaro non trovato nel report.'; return; }
 
-  const modeSelected = document.querySelector('input[name="esitoCalcMode"]:checked').value;
-  const calc = _esitoCalc ? _esitoCalc[modeSelected] : null;
-  const punteggioCombinato = calc ? calc.avg.toFixed(1) : '';
+  const normInput = document.getElementById('esitoPunteggioNormalizzato');
+  const punteggioNormalizzato = normInput ? parseInt(normInput.value, 10) : NaN;
+  if(isNaN(punteggioNormalizzato) || punteggioNormalizzato < 1 || punteggioNormalizzato > 5){
+    status.textContent = 'Il Punteggio Normalizzato deve essere un numero intero tra 1 e 5.';
+    status.style.color = '#b5202c';
+    return;
+  }
 
-  ['valutazione_globale_ita','valutazione_globale_eng','punteggio_finale_combinato'].forEach(tag=>{
+  const panelistiEsclusi = Array.from(document.querySelectorAll('.esito-calc-checkbox'))
+    .filter(cb=>!cb.checked)
+    .map(cb=>{ const p = _esitoPanelistiCorrenti[parseInt(cb.dataset.idx,10)]; return p ? p.nome : null; })
+    .filter(Boolean);
+
+  ['valutazione_globale_ita','valutazione_globale_eng','punteggio_finale_combinato','panelisti_esclusi'].forEach(tag=>{
     const existing = sigaroEl.getElementsByTagName(tag)[0];
     if(existing) sigaroEl.removeChild(existing);
   });
@@ -2066,11 +2130,13 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   const engNode = _esitoReportDoc.createElement('valutazione_globale_eng');
   engNode.textContent = eng;
   const puntNode = _esitoReportDoc.createElement('punteggio_finale_combinato');
-  puntNode.setAttribute('metodo', modeSelected);
-  puntNode.textContent = punteggioCombinato;
+  puntNode.textContent = String(punteggioNormalizzato);
+  const esclusiNode = _esitoReportDoc.createElement('panelisti_esclusi');
+  esclusiNode.textContent = panelistiEsclusi.join('|');
   sigaroEl.appendChild(itaNode);
   sigaroEl.appendChild(engNode);
   sigaroEl.appendChild(puntNode);
+  sigaroEl.appendChild(esclusiNode);
 
   const xmlText = new XMLSerializer().serializeToString(_esitoReportDoc);
   const fileName = `report_panel_${panelNumero}.xml`;
@@ -2078,7 +2144,7 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
     const blob = new Blob([xmlText], {type:'application/xml'});
     const { error } = await sb.storage.from('panel-exports').upload(fileName, blob, { upsert:true, contentType:'application/xml' });
     if(error){ status.textContent = 'Errore nel salvataggio: ' + error.message; status.style.color = '#b5202c'; return; }
-    status.textContent = '✓ Valutazioni salvate nel report.';
+    status.textContent = '✓ Valutazioni salvate nel report (Punteggio Normalizzato: ' + punteggioNormalizzato + ').';
     status.style.color = '#2f7a3f';
   }catch(err){
     status.textContent = 'Errore: ' + err.message;
