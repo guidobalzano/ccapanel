@@ -602,8 +602,8 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <div id="esitoRivistaWarning" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:3px;font-size:13px;margin:12px 0;"></div>
       <div style="overflow-x:auto;">
         <table class="admin-table" id="esitoSigariRivistaTable" style="margin-top:10px;min-width:420px;">
-          <thead><tr><th>Sigaro</th><th>Presente nel Report Unico</th><th>N. progressivo rivista</th></tr></thead>
-          <tbody id="esitoSigariRivistaBody"><tr><td colspan="3" class="empty-note">Seleziona un panel qui sotto per vedere l'elenco dei sigari.</td></tr></tbody>
+          <thead><tr><th>Sigaro</th><th>Produttore</th><th>Vitola de Salida</th><th>Presente nel Report Unico</th><th>N. progressivo rivista</th></tr></thead>
+          <tbody id="esitoSigariRivistaBody"><tr><td colspan="5" class="empty-note">Seleziona un panel qui sotto per vedere l'elenco dei sigari.</td></tr></tbody>
         </table>
       </div>
 
@@ -1895,17 +1895,17 @@ async function loadEsitoSigariRivistaTable(panelNumero){
   _esitoSigariPanel = [];
 
   if(!panelNumero){
-    body.innerHTML = '<tr><td colspan="3" class="empty-note">Seleziona un panel qui sotto per vedere l\'elenco dei sigari.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty-note">Seleziona un panel qui sotto per vedere l\'elenco dei sigari.</td></tr>';
     return;
   }
 
   const panelRow = _panelsCache.find(p => String(p.numero) === String(panelNumero));
   if(!panelRow){
-    body.innerHTML = '<tr><td colspan="3" class="empty-note">Panel non trovato.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty-note">Panel non trovato.</td></tr>';
     return;
   }
 
-  body.innerHTML = '<tr><td colspan="3" class="empty-note">Caricamento…</td></tr>';
+  body.innerHTML = '<tr><td colspan="5" class="empty-note">Caricamento…</td></tr>';
 
   // Prova a leggere anche 'numero_rivista'; se la colonna non esiste ancora
   // sul DB, ripiega su una select senza quel campo e mostra un avviso con
@@ -1926,7 +1926,7 @@ async function loadEsitoSigariRivistaTable(panelNumero){
       .eq('panel_id', panelRow.id)
       .order('numero_sigaro');
     if(error){
-      body.innerHTML = '<tr><td colspan="3" class="empty-note">Errore nel caricamento dei sigari: ' + escapeHtml(error.message) + '</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="empty-note">Errore nel caricamento dei sigari: ' + escapeHtml(error.message) + '</td></tr>';
       return;
     }
     sigariRows = (data || []).map(s => ({ ...s, numero_rivista: null }));
@@ -1936,27 +1936,49 @@ async function loadEsitoSigariRivistaTable(panelNumero){
     _esitoNumeroRivistaColonnaOk = true;
   }
 
+  // Anagrafica (Produttore, Vitola de Salida) per tutti i sigari del panel
+  // in un'unica query, poi abbinata per sigaro_id.
+  const sigaroIds = (sigariRows || []).map(s => s.id);
+  let anagraficaById = {};
+  if(sigaroIds.length > 0){
+    const { data: anagRows, error: anagErr } = await sb.from('sigari_anagrafica')
+      .select('sigaro_id, produttore, vitola_de_salida')
+      .in('sigaro_id', sigaroIds);
+    if(anagErr){
+      console.error('[Sigari del Panel] errore caricamento anagrafica:', anagErr);
+    }else{
+      (anagRows || []).forEach(a => { anagraficaById[a.sigaro_id] = a; });
+    }
+  }
+
   const rows = (sigariRows || []).sort((a,b)=>{
     const na = parseInt(a.numero_sigaro,10), nb = parseInt(b.numero_sigaro,10);
     if(!isNaN(na) && !isNaN(nb)) return na-nb;
     return String(a.numero_sigaro).localeCompare(String(b.numero_sigaro));
-  }).map(s => ({
-    id: s.id,
-    numero_sigaro: s.numero_sigaro,
-    numero_rivista: s.numero_rivista,
-    presente: _sigaroPresenteNelReport(_esitoReportDoc, s.numero_sigaro),
-  }));
+  }).map(s => {
+    const anag = anagraficaById[s.id];
+    return {
+      id: s.id,
+      numero_sigaro: s.numero_sigaro,
+      numero_rivista: s.numero_rivista,
+      produttore: anag ? anag.produttore : '',
+      vitola_de_salida: anag ? anag.vitola_de_salida : '',
+      presente: _sigaroPresenteNelReport(_esitoReportDoc, s.numero_sigaro),
+    };
+  });
 
   _esitoSigariPanel = rows;
 
   if(rows.length === 0){
-    body.innerHTML = '<tr><td colspan="3" class="empty-note">Nessun sigaro assegnato a questo panel.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty-note">Nessun sigaro assegnato a questo panel.</td></tr>';
     return;
   }
 
   body.innerHTML = rows.map(r => `
     <tr>
       <td data-label="Sigaro">Sigaro ${escapeHtml(r.numero_sigaro)}</td>
+      <td data-label="Produttore">${escapeHtml(r.produttore) || '—'}</td>
+      <td data-label="Vitola de Salida">${escapeHtml(r.vitola_de_salida) || '—'}</td>
       <td data-label="Presente nel Report Unico">
         ${r.presente
           ? '<span style="display:inline-flex;align-items:center;gap:6px;color:#5fbf6a;font-weight:600;">✓ Presente</span>'
