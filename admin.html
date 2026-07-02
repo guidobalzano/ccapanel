@@ -2394,12 +2394,17 @@ function schedaSitoTestoGiustificato(page, text, x, yTop, width, font, fontSize,
 
 // Se l'immagine è verticale (ritratto), la ruota di 90° via canvas per
 // renderla orizzontale. Ritorna { bytes, isPng } pronti per pdf-lib.
+//
+// IMPORTANTE: la decisione orizzontale/verticale si basa sulle dimensioni
+// naturali dell'elemento <img> del browser (naturalWidth/naturalHeight),
+// NON sul parsing manuale del file (leggiDimensioniImmagine). Il motivo:
+// le foto da smartphone spesso hanno un tag EXIF "Orientation" che dice
+// al browser di ruotare l'immagine in visualizzazione, ma i pixel grezzi
+// nel file restano nell'orientamento originale della camera. Il parsing
+// manuale legge le dimensioni grezze (ignora l'EXIF) e può quindi decidere
+// in modo sbagliato; il browser invece applica sempre l'EXIF, quindi
+// naturalWidth/naturalHeight riflettono l'orientamento visivo corretto.
 async function schedaSitoOrizzontalizzaFoto(rawBytes){
-  const dim = leggiDimensioniImmagine(rawBytes);
-  const isPngOriginale = rawBytes[0] === 0x89 && rawBytes[1] === 0x50;
-  if(!dim || dim.height <= dim.width){
-    return { bytes: rawBytes, isPng: isPngOriginale };
-  }
   const blob = new Blob([rawBytes]);
   const url = URL.createObjectURL(blob);
   try{
@@ -2409,13 +2414,27 @@ async function schedaSitoOrizzontalizzaFoto(rawBytes){
       im.onerror = rej;
       im.src = url;
     });
-    const w = dim.width, h = dim.height;
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if(!w || !h){
+      // dimensioni non lette: non tocco il file originale
+      const isPngOriginale = rawBytes[0] === 0x89 && rawBytes[1] === 0x50;
+      return { bytes: rawBytes, isPng: isPngOriginale };
+    }
+    // Passa SEMPRE dal canvas (ruotata o no): cos\u00ec pdf-lib riceve
+    // sempre un raster "pulito" gi\u00e0 orientato come lo vede il browser,
+    // senza alcuna ambiguit\u00e0 EXIF residua.
+    const ruota = h > w;
     const canvasEl = document.createElement('canvas');
-    canvasEl.width = h; canvasEl.height = w;
+    canvasEl.width = ruota ? h : w;
+    canvasEl.height = ruota ? w : h;
     const ctx = canvasEl.getContext('2d');
-    ctx.translate(h/2, w/2);
-    ctx.rotate(Math.PI/2);
-    ctx.drawImage(img, -w/2, -h/2);
+    if(ruota){
+      ctx.translate(h/2, w/2);
+      ctx.rotate(Math.PI/2);
+      ctx.drawImage(img, -w/2, -h/2, w, h);
+    }else{
+      ctx.drawImage(img, 0, 0, w, h);
+    }
     const outBlob = await new Promise(res => canvasEl.toBlob(res, 'image/png'));
     const outBytes = new Uint8Array(await outBlob.arrayBuffer());
     return { bytes: outBytes, isPng: true };
