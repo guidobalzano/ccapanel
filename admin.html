@@ -90,6 +90,8 @@ a{color:var(--gold-light);}
 .refresh-online-btn:hover{background:rgba(205,185,144,.15);color:var(--paper);}
 .refresh-online-btn.spinning{animation:cca-refresh-spin .6s linear;}
 @keyframes cca-refresh-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+.status-dot-online-pulse{animation:cca-online-pulse 2.2s ease-in-out infinite;}
+@keyframes cca-online-pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
 
 /* ===== Layout ===== */
 .wrap{max-width:1180px;margin:0 auto;padding:40px 28px 90px;}
@@ -627,7 +629,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     <div id="tab-users" class="admin-panel hidden">
       <div class="section-title"><h2>Utenti registrati</h2><div class="rule"></div></div>
       <div id="usersOnlineWarning" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:3px;font-size:13px;margin-bottom:14px;"></div>
-      <div class="block-hint">Aggiungi un nuovo Panelist (o admin) con email e password iniziali.</div>
+      <div class="block-hint">Aggiungi un nuovo Utente (Panelist o Admin) con email e password iniziale.</div>
       <div class="inline-form">
         <div class="field"><label>Nome</label><input type="text" id="np-nome" placeholder="es. Guido"></div>
         <div class="field"><label>Cognome</label><input type="text" id="np-cognome" placeholder="es. Balzano"></div>
@@ -640,7 +642,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
             <option value="admin">Admin</option>
           </select>
         </div>
-        <div class="field"><label>Password iniziale (opzionale)</label><input type="text" id="np-password" placeholder="Lascia vuoto per usare il default"></div>
+        <div class="field"><label>Password iniziale</label><input type="text" id="np-password" placeholder="scelta dall'admin, min. 6 caratteri" required></div>
         <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Utente</button>
       </div>
 
@@ -650,13 +652,14 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       </table>
 
       <div class="section-title" style="margin-top:50px;"><h2>Reset Password Rapido</h2><div class="rule"></div></div>
-      <div class="block-hint">Reimposta la password di un Panelist al valore di default del sistema (viene mostrata dopo il reset, da comunicare fuori banda).</div>
+      <div class="block-hint">Reimposta la password di un Utente a una password temporanea scelta da te: dovrà cambiarla al primo accesso successivo.</div>
       <div class="inline-form">
         <div class="field">
-          <label>Panelist</label>
+          <label>Utente</label>
           <select id="rp-utente"></select>
         </div>
-        <button class="btn btn-danger" onclick="resetToDefaultPassword()">Resetta a Password Default</button>
+        <div class="field"><label>Password temporanea</label><input type="text" id="rp-password" placeholder="scelta dall'admin, min. 6 caratteri" required></div>
+        <button class="btn btn-danger" onclick="resettaPasswordTemporanea()">Resetta a Password Temporanea</button>
       </div>
     </div>
 
@@ -1726,9 +1729,8 @@ async function loadUsersTable(){
   _usersCache.forEach(u=>{
     const online = u.last_seen_at && (Date.now() - new Date(u.last_seen_at).getTime()) < ONLINE_SOGLIA_MS;
     const onlineLabel = online
-      ? '<span style="display:inline-flex;align-items:center;gap:6px;color:#5fbf6a;"><span style="width:9px;height:9px;border-radius:50%;background:#5fbf6a;display:inline-block;"></span>Online</span>'
-      : '<span style="display:inline-flex;align-items:center;gap:6px;color:var(--ash);"><span style="width:9px;height:9px;border-radius:50%;background:var(--ash);display:inline-block;opacity:.5;"></span>' +
-        (u.last_seen_at ? formatDateTime(u.last_seen_at) : '—') + '</span>';
+      ? '<span style="display:inline-flex;align-items:center;gap:6px;color:#5fbf6a;"><span class="status-dot-online-pulse" style="width:9px;height:9px;border-radius:50%;background:#5fbf6a;display:inline-block;"></span>Online</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:6px;color:var(--ash);"><span style="width:9px;height:9px;border-radius:50%;background:var(--ash);display:inline-block;opacity:.5;"></span>Offline</span>';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Nome">${escapeHtml(u.full_name)}</td>
@@ -1760,19 +1762,23 @@ async function createPanelist(){
   const email = document.getElementById('np-email').value.trim();
   const telefono = document.getElementById('np-telefono').value.trim();
   const role = document.getElementById('np-role').value;
-  const password = document.getElementById('np-password').value; // opzionale: se vuoto, il server usa il default
+  const password = document.getElementById('np-password').value; // obbligatoria: scelta dall'admin, nessun default lato server
 
   if(!nome || !cognome || !email){
     showAlert('Compila almeno nome, cognome ed email.');
     return;
   }
-  if(password && password.length < 6){
-    showAlert('Se specificata, la password deve avere almeno 6 caratteri.');
+  if(!password){
+    showAlert('La password iniziale è obbligatoria: scegline una da comunicare al nuovo utente.');
+    return;
+  }
+  if(password.length < 6){
+    showAlert('La password deve avere almeno 6 caratteri.');
     return;
   }
 
   try{
-    const result = await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password: password || undefined });
+    const result = await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password });
     let msg = 'Utente creato con successo.\nPassword iniziale: ' + result.password + '\nDovrà cambiarla al primo accesso.';
     if(result.email_sent){
       msg += '\n\n✓ Email di benvenuto inviata a ' + email + ' con credenziali e link di accesso.';
@@ -1859,15 +1865,21 @@ function deletePanelist(userId){
   });
 }
 
-function resetToDefaultPassword(){
+function resettaPasswordTemporanea(){
   const sel = document.getElementById('rp-utente');
   const userId = sel.value;
   const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
-  if(!userId) return;
-  askConfirm('Reimpostare la password di ' + label + ' al valore di default?', async ()=>{
+  const pwInput = document.getElementById('rp-password');
+  const password = pwInput.value;
+  if(!userId){ showAlert('Seleziona un utente.'); return; }
+  if(!password){ showAlert('Inserisci la password temporanea da assegnare.'); return; }
+  if(password.length < 6){ showAlert('La password deve avere almeno 6 caratteri.'); return; }
+
+  askConfirm('Reimpostare la password di ' + label + ' alla password temporanea inserita?', async ()=>{
     try{
-      const result = await callAdminUsersFunction({ action:'reset_to_default', user_id:userId });
-      showAlert('Password reimpostata per ' + label + '.\nNuova password: ' + result.password + '\nComunicala al Panelist: dovrà cambiarla al primo accesso.');
+      await callAdminUsersFunction({ action:'reset_password', user_id:userId, new_password: password });
+      showAlert('Password reimpostata per ' + label + '.\nNuova password temporanea: ' + password + '\nComunicala all\'utente: dovrà cambiarla al primo accesso.');
+      pwInput.value = '';
     }catch(err){
       showAlert('Errore nel reset password: ' + err.message);
     }
