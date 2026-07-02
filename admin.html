@@ -80,6 +80,16 @@ a{color:var(--gold-light);}
 .btn-danger:hover{background:var(--red);color:#fff;}
 .btn-white{background:#fff;border-color:#fff;color:#1c1712;}
 .btn-white:hover{background:var(--gold);border-color:var(--gold);color:#1c1712;}
+.refresh-online-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;padding:0;margin-left:6px;
+  border-radius:50%;border:1px solid rgba(205,185,144,.4);
+  background:transparent;color:var(--ash);font-size:12px;line-height:1;
+  cursor:pointer;vertical-align:middle;
+}
+.refresh-online-btn:hover{background:rgba(205,185,144,.15);color:var(--paper);}
+.refresh-online-btn.spinning{animation:cca-refresh-spin .6s linear;}
+@keyframes cca-refresh-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
 /* ===== Layout ===== */
 .wrap{max-width:1180px;margin:0 auto;padding:40px 28px 90px;}
@@ -625,7 +635,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       </div>
 
       <table class="admin-table" style="margin-top:30px;">
-        <thead><tr><th>Nome</th><th>Email</th><th>Telefono</th><th>Ruolo</th><th>Online</th><th>Registrato il</th><th>Azioni</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Email</th><th>Telefono</th><th>Ruolo</th><th>Online <button type="button" class="refresh-online-btn" id="refreshOnlineBtn" onclick="forzaRefreshOnline()" title="Aggiorna adesso lo stato Online">↻</button></th><th>Registrato il</th><th>Azioni</th></tr></thead>
         <tbody id="usersTableBody"></tbody>
       </table>
 
@@ -1052,6 +1062,26 @@ async function tryRestoreSession(){
    TABS
    ============================================================ */
 let _usersTableRefreshInterval = null;
+
+// Pulsante ↻ nell'header "Online": forza subito un refresh della tabella
+// Utenti senza aspettare i secondi residui del polling automatico a 15s,
+// e riavvia il timer da zero per evitare un doppio refresh ravvicinato.
+async function forzaRefreshOnline(){
+  const btn = document.getElementById('refreshOnlineBtn');
+  if(btn){ btn.disabled = true; btn.classList.add('spinning'); }
+  try{
+    await loadUsersTable();
+  }finally{
+    if(btn){
+      btn.disabled = false;
+      setTimeout(()=>btn.classList.remove('spinning'), 600);
+    }
+  }
+  if(_usersTableRefreshInterval){
+    clearInterval(_usersTableRefreshInterval);
+    _usersTableRefreshInterval = setInterval(loadUsersTable, 15000);
+  }
+}
 function switchTab(name){
   ['panels','assign','export','archive','users','password'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
@@ -2263,17 +2293,26 @@ const AI_INSTRUCTIONS_FILE = 'config/istruzioni-ai.txt';
 async function loadAiInstructions(renderInField){
   const status = renderInField ? document.getElementById('aiInstructionsStatus') : null;
   try{
-    const { data: listData, error: listErr } = await sb.storage.from('panel-exports').list('config', { search: 'istruzioni-ai.txt' });
-    const existsInList = !listErr && (listData || []).some(f => f.name === 'istruzioni-ai.txt');
-    if(!existsInList){
-      _aiInstructionsText = '';
-      if(renderInField){ document.getElementById('aiInstructionsText').value = ''; if(status) status.textContent = ''; }
-      return;
-    }
-
+    // NOTA: niente pi\u00f9 controllo preventivo con .list('config', ...) prima
+    // di scaricare — quella chiamata richiede un permesso Storage separato
+    // (list) rispetto al download/signedUrl (select), e se fallisce per un
+    // motivo qualsiasi (RLS, rete, ecc.) il file veniva trattato come
+    // "inesistente" e il campo svuotato SENZA mostrare alcun errore.
+    // Ora si prova direttamente a creare il signed URL: se il file non
+    // esiste ancora, l'errore lo dice esplicitamente (gestito sotto); se
+    // fallisce per un altro motivo, l'errore viene mostrato invece di
+    // essere nascosto.
     const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(AI_INSTRUCTIONS_FILE, 60);
-    if(signErr || !signedData?.signedUrl){
-      if(status){ status.textContent = 'Impossibile caricare le istruzioni salvate.'; status.style.color = '#b5202c'; }
+    if(signErr){
+      const nonTrovato = /not.?found|404|does not exist/i.test(signErr.message || '');
+      if(nonTrovato){
+        // Prima configurazione: il file non è mai stato salvato. Comportamento normale, nessun errore da mostrare.
+        _aiInstructionsText = '';
+        if(renderInField){ document.getElementById('aiInstructionsText').value = ''; if(status) status.textContent = ''; }
+        return;
+      }
+      console.error('[Istruzioni AI] errore createSignedUrl:', signErr);
+      if(status){ status.textContent = 'Impossibile caricare le istruzioni salvate: ' + signErr.message; status.style.color = '#b5202c'; }
       return;
     }
     const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
