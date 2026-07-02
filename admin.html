@@ -1722,7 +1722,13 @@ async function createPanelist(){
 
   try{
     const result = await callAdminUsersFunction({ action:'create', nome, cognome, email, telefono, role, password: password || undefined });
-    showAlert('Panelist creato con successo.\nPassword iniziale: ' + result.password + '\nDovrà cambiarla al primo accesso.');
+    let msg = 'Utente creato con successo.\nPassword iniziale: ' + result.password + '\nDovrà cambiarla al primo accesso.';
+    if(result.email_sent){
+      msg += '\n\n✓ Email di benvenuto inviata a ' + email + ' con credenziali e link di accesso.';
+    }else{
+      msg += '\n\n⚠ Email NON inviata' + (result.email_error ? ' (' + result.email_error + ')' : '') + ': comunica tu le credenziali all\'utente.';
+    }
+    showAlert(msg);
     ['np-nome','np-cognome','np-email','np-telefono','np-password'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('np-role').value = 'degustatore';
     await loadUsersTable();
