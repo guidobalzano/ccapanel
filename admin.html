@@ -393,6 +393,25 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--gold-light);
   }
+  /* Eccezione: la cella "Presenza nel calcolo" (sola checkbox) resta su
+     un'unica riga, label a sinistra e checkbox a destra, invece di
+     impilarsi come le altre celle testuali. */
+  table.admin-table td[data-label="Presenza nel calcolo"]{
+    flex-direction:row;
+    align-items:center;
+  }
+  table.admin-table td[data-label="Presenza nel calcolo"]::before{
+    flex:1 1 auto;
+    text-align:left;
+  }
+  /* La tabella "Calcolo Punteggio Globale" non ha bisogno dello scroll
+     orizzontale su mobile (a differenza della tabella con i 3 terzi):
+     su schermi stretti il min-width fisso la faceva sporgere oltre il
+     bordo dello schermo, portando la checkbox fuori dall'area visibile. */
+  table.admin-table.calc-table{
+    min-width:0 !important;
+    max-width:100% !important;
+  }
   table.admin-table select,
   table.admin-table input{
     width:100%;
@@ -1911,8 +1930,8 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
         <div class="block-title cap" style="display:inline-block;background:var(--gold);color:var(--ink);padding:6px 14px;border-radius:2px;">Calcolo Punteggio Globale</div>
 
         <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;margin-top:18px;">
-          <div style="overflow-x:auto;flex:1 1 320px;">
-            <table class="admin-table" style="min-width:420px;max-width:520px;">
+          <div style="overflow-x:auto;flex:0 1 520px;">
+            <table class="admin-table calc-table" style="min-width:420px;max-width:520px;">
               <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
               <tbody id="esitoCalcTableBody">${calcRows}</tbody>
             </table>
@@ -1941,15 +1960,17 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
             <div class="subtle">Score (valore medio)</div>
             <div id="esitoScoreValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);"></div>
           </div>
-          <div style="text-align:center;">
-            <div class="subtle">Punteggio</div>
-            <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
-            <div class="subtle" id="esitoPunteggioRange"></div>
-          </div>
-          <div style="text-align:center;">
-            <div class="subtle">Punteggio Normalizzato</div>
-            <input type="number" id="esitoPunteggioNormalizzato" min="1" max="5" step="1"
-              style="margin-top:6px;width:74px;text-align:center;font-family:'Playfair Display',serif;font-size:26px;color:var(--red);background:transparent;border:1px solid var(--gold);border-radius:3px;padding:4px 0;">
+          <div style="display:flex;gap:34px;align-items:flex-start;">
+            <div style="text-align:center;">
+              <div class="subtle">Punteggio</div>
+              <div id="esitoPunteggioValue" style="font-family:'Playfair Display',serif;font-size:30px;color:var(--red);"></div>
+              <div class="subtle" id="esitoPunteggioRange"></div>
+            </div>
+            <div style="text-align:center;">
+              <div class="subtle">Punteggio Normalizzato</div>
+              <input type="number" id="esitoPunteggioNormalizzato" min="1" max="5" step="1"
+                style="margin-top:6px;width:74px;text-align:center;font-family:'Playfair Display',serif;font-size:26px;color:var(--red);background:transparent;border:1px solid var(--gold);border-radius:3px;padding:4px 0;">
+            </div>
           </div>
         </div>
       </div>
