@@ -869,6 +869,17 @@ async function changeOwnPassword(){
 
 async function logout(){
   fermaHeartbeat();
+  // Segnala "offline" su Supabase SUBITO, prima di terminare la sessione:
+  // dopo sb.auth.signOut() l'utente non è più autenticato e non potrebbe
+  // più scrivere sul proprio profilo (RLS). Così l'admin vede lo stato
+  // Online aggiornarsi in tempo reale al logout, senza aspettare i 2
+  // minuti di timeout dell'ultimo heartbeat.
+  if(currentUser){
+    try{
+      const { error } = await sb.from('profiles').update({ last_seen_at: null }).eq('id', currentUser.id);
+      if(error) console.error('[Logout] impossibile azzerare last_seen_at:', error.message);
+    }catch(e){ console.error('[Logout] eccezione azzerando last_seen_at:', e); }
+  }
   await sb.auth.signOut();
   currentUser = null;
   document.getElementById('app').classList.add('hidden');
