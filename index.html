@@ -394,10 +394,6 @@ footer.foot{
       <div class="section-title"><h2>Panel</h2><div class="rule"></div></div>
       <div class="block-hint" style="margin-top:-4px;">Seleziona un panel per vedere i sigari a te assegnati</div>
       <div id="panelCardsHost" class="grid-cards"></div>
-
-      <div class="section-title" style="margin-top:60px;"><h2>Tutte le mie schede</h2><div class="rule"></div></div>
-      <div id="cardsHost" class="grid-cards"></div>
-      <div id="emptyNote" class="empty-note hidden">Nessuna scheda salvata.</div>
     </div>
 
     <!-- ===== PANEL DETAIL (cigar list) ===== -->
@@ -989,7 +985,6 @@ function showView(id){
 async function backToDashboard(){
   showView('panelListView');
   await loadPanels();
-  await loadMyTastingsList();
 }
 
 /* ============================================================
@@ -1013,64 +1008,6 @@ async function loadMyAssignedSigari(panelNumero){
     .order('numero_sigaro', {ascending:true});
   if(error){ console.error(error); return []; }
   return data || [];
-}
-
-async function getSubmittedPanelNumbers(){
-  const namePart = sanitizeFileNamePart(currentUser.name);
-  const re = new RegExp('^panel_(\\d+)_' + namePart + '\\.xml$');
-  try{
-    const { data, error } = await sb.storage.from('panel-exports').list('', { limit: 1000 });
-    if(error) return new Set();
-    const set = new Set();
-    (data || []).forEach(f=>{
-      const m = f.name && f.name.match(re);
-      if(m) set.add(m[1]);
-    });
-    return set;
-  }catch(e){ return new Set(); }
-}
-
-async function loadMyTastingsList(){
-  const host = document.getElementById('cardsHost');
-  const empty = document.getElementById('emptyNote');
-  const { data, error } = await sb
-    .from('schede_degustazione')
-    .select('*, sigari(numero_sigaro, panel_id, panels(numero))')
-    .eq('utente_id', currentUser.id)
-    .order('updated_at', {ascending:false});
-  if(error){ console.error(error); host.innerHTML=''; empty.classList.remove('hidden'); return; }
-
-  const submittedPanels = await getSubmittedPanelNumbers();
-
-  host.innerHTML = '';
-  empty.classList.toggle('hidden', (data||[]).length>0);
-  (data||[]).forEach(t=>{
-    const panelNum = t.sigari && t.sigari.panels ? t.sigari.panels.numero : '';
-    const sigaroNum = t.sigari ? t.sigari.numero_sigaro : '—';
-    const submitted = panelNum && submittedPanels.has(String(panelNum));
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="cig-no">Sigaro n. ${escapeHtml(sigaroNum)}</div>
-      <div class="cig-date">${panelNum? 'Panel '+escapeHtml(panelNum)+' · ':''}${formatDate(t.data)}</div>
-      <div class="score">${t.punteggio ? t.punteggio : ''}</div>
-      <div class="meta">${escapeHtml((t.commenti||'').slice(0,90)) || 'Nessun commento'}</div>
-      <div class="card-actions">
-        <button class="btn btn-small btn-ghost" data-act="view">Apri</button>
-        ${submitted ? '' : `
-          <button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>
-          <button class="btn btn-small btn-danger" data-act="del">Elimina</button>
-        `}
-      </div>
-      ${submitted ? '<div class="subtle" style="margin-top:8px;color:#3fae5c;">✓ Panel sottomesso</div>' : ''}
-    `;
-    card.querySelector('[data-act="view"]').onclick = ()=>{ detailOrigin='panelList'; openDetail(t.id); };
-    const editBtn = card.querySelector('[data-act="edit"]');
-    if(editBtn){ editBtn.onclick = ()=>{ formOrigin='panelList'; openEdit(t.id, t.sigaro_id); }; }
-    const delBtn = card.querySelector('[data-act="del"]');
-    if(delBtn){ delBtn.onclick = ()=>deleteTasting(t.id); }
-    host.appendChild(card);
-  });
 }
 
 /* ============================================================
@@ -1376,7 +1313,7 @@ function deleteTasting(id){
     if(currentPanel && !document.getElementById('panelDetailView').classList.contains('hidden')){
       await renderPanelDetail();
     } else {
-      await loadMyTastingsList();
+      await backToDashboard();
     }
   });
 }
