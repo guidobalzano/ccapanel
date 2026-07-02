@@ -597,7 +597,17 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     </div>
 
     <div id="tab-export" class="admin-panel hidden">
-      <div class="section-title"><h2>Esito Panel</h2><div class="rule"></div></div>
+      <div class="section-title"><h2>Sigari del Panel</h2><div class="rule"></div></div>
+      <div class="block-hint">Stato di presenza di ciascun sigaro nel report unico (valutazione finale salvata da "Esito Panel" qui sotto) e numero progressivo di rivista, modificabile. Seleziona un panel nel menu "Panel" qui sotto per popolare questo elenco.</div>
+      <div id="esitoRivistaWarning" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:3px;font-size:13px;margin:12px 0;"></div>
+      <div style="overflow-x:auto;">
+        <table class="admin-table" id="esitoSigariRivistaTable" style="margin-top:10px;min-width:420px;">
+          <thead><tr><th>Sigaro</th><th>Presente nel Report Unico</th><th>N. progressivo rivista</th></tr></thead>
+          <tbody id="esitoSigariRivistaBody"><tr><td colspan="3" class="empty-note">Seleziona un panel qui sotto per vedere l'elenco dei sigari.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="margin-top:44px;"><h2>Esito Panel</h2><div class="rule"></div></div>
       <div class="block-hint">Seleziona un panel e un sigaro per vedere l'analisi comparativa dei Panelist. Richiede che il report unico sia già stato generato dal tab "Archivio Sottomissioni".</div>
       <div class="inline-form">
         <div class="field">
@@ -1859,6 +1869,130 @@ function resetToDefaultPassword(){
    ============================================================ */
 let _esitoReportDoc = null;
 let _esitoCurrentPanelNumero = null;
+let _esitoSigariPanel = []; // [{id, numero_sigaro, numero_rivista, presente}] per il panel selezionato
+let _esitoNumeroRivistaColonnaOk = true; // false se la colonna 'numero_rivista' non esiste ancora sul DB
+
+// Determina se un sigaro (per numero) ha una valutazione finale già salvata
+// nel report unico (cioè "Salva nel Report" è stato eseguito per lui in
+// "Esito Panel" qui sotto) — questa è la definizione di "presente" usata
+// sia nella tabella di sintesi sia nel controllo prima dell'export Word.
+function _sigaroPresenteNelReport(doc, numeroSigaro){
+  if(!doc) return false;
+  const sigari = Array.from(doc.getElementsByTagName('gruppo_sigaro'));
+  const el = sigari.find(s => s.getAttribute('numero') === String(numeroSigaro));
+  if(!el) return false;
+  return !!el.getElementsByTagName('punteggio_finale_combinato')[0];
+}
+
+// Carica ed effettua il render della tabella "Sigari del Panel": tutti i
+// sigari assegnati al panel (dalla tabella 'sigari'), con stato di presenza
+// nel report unico (derivato da _esitoReportDoc, se caricato) e il campo
+// editabile "N. progressivo rivista" (colonna 'numero_rivista' su 'sigari').
+async function loadEsitoSigariRivistaTable(panelNumero){
+  const body = document.getElementById('esitoSigariRivistaBody');
+  const warning = document.getElementById('esitoRivistaWarning');
+  warning.classList.add('hidden');
+  _esitoSigariPanel = [];
+
+  if(!panelNumero){
+    body.innerHTML = '<tr><td colspan="3" class="empty-note">Seleziona un panel qui sotto per vedere l\'elenco dei sigari.</td></tr>';
+    return;
+  }
+
+  const panelRow = _panelsCache.find(p => String(p.numero) === String(panelNumero));
+  if(!panelRow){
+    body.innerHTML = '<tr><td colspan="3" class="empty-note">Panel non trovato.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = '<tr><td colspan="3" class="empty-note">Caricamento…</td></tr>';
+
+  // Prova a leggere anche 'numero_rivista'; se la colonna non esiste ancora
+  // sul DB, ripiega su una select senza quel campo e mostra un avviso con
+  // l'istruzione SQL per aggiungerla (stesso pattern usato per last_seen_at).
+  let sigariRows = null;
+  let selErr = null;
+  {
+    const { data, error } = await sb.from('sigari')
+      .select('id, numero_sigaro, numero_rivista')
+      .eq('panel_id', panelRow.id)
+      .order('numero_sigaro');
+    sigariRows = data; selErr = error;
+  }
+  if(selErr){
+    _esitoNumeroRivistaColonnaOk = false;
+    const { data, error } = await sb.from('sigari')
+      .select('id, numero_sigaro')
+      .eq('panel_id', panelRow.id)
+      .order('numero_sigaro');
+    if(error){
+      body.innerHTML = '<tr><td colspan="3" class="empty-note">Errore nel caricamento dei sigari: ' + escapeHtml(error.message) + '</td></tr>';
+      return;
+    }
+    sigariRows = (data || []).map(s => ({ ...s, numero_rivista: null }));
+    warning.textContent = '⚠ La colonna "numero_rivista" non esiste nella tabella sigari: il numero progressivo non può essere salvato. Esegui in Supabase → SQL Editor: alter table public.sigari add column if not exists numero_rivista text;';
+    warning.classList.remove('hidden');
+  }else{
+    _esitoNumeroRivistaColonnaOk = true;
+  }
+
+  const rows = (sigariRows || []).sort((a,b)=>{
+    const na = parseInt(a.numero_sigaro,10), nb = parseInt(b.numero_sigaro,10);
+    if(!isNaN(na) && !isNaN(nb)) return na-nb;
+    return String(a.numero_sigaro).localeCompare(String(b.numero_sigaro));
+  }).map(s => ({
+    id: s.id,
+    numero_sigaro: s.numero_sigaro,
+    numero_rivista: s.numero_rivista,
+    presente: _sigaroPresenteNelReport(_esitoReportDoc, s.numero_sigaro),
+  }));
+
+  _esitoSigariPanel = rows;
+
+  if(rows.length === 0){
+    body.innerHTML = '<tr><td colspan="3" class="empty-note">Nessun sigaro assegnato a questo panel.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td data-label="Sigaro">Sigaro ${escapeHtml(r.numero_sigaro)}</td>
+      <td data-label="Presente nel Report Unico">
+        ${r.presente
+          ? '<span style="display:inline-flex;align-items:center;gap:6px;color:#5fbf6a;font-weight:600;">✓ Presente</span>'
+          : '<span style="display:inline-flex;align-items:center;gap:6px;color:var(--ash);">— Non presente</span>'}
+      </td>
+      <td data-label="N. progressivo rivista">
+        <input type="text" class="numero-rivista-input" data-sigaro-id="${r.id}"
+          value="${escapeHtml(r.numero_rivista || '')}" placeholder="es. 01"
+          style="width:80px;text-align:center;"
+          onchange="salvaNumeroRivista(${r.id}, this.value, this)">
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Salva il numero progressivo di rivista per un singolo sigaro (upsert sul
+// campo 'numero_rivista' della riga corrispondente in 'sigari').
+async function salvaNumeroRivista(sigaroId, valore, inputEl){
+  const val = (valore || '').trim();
+  inputEl.disabled = true;
+  try{
+    const { error } = await sb.from('sigari').update({ numero_rivista: val || null }).eq('id', sigaroId);
+    if(error){
+      showAlert('Errore nel salvataggio del numero progressivo: ' + error.message);
+      return;
+    }
+    const row = _esitoSigariPanel.find(r => r.id === sigaroId);
+    if(row) row.numero_rivista = val || null;
+    inputEl.style.borderColor = '#5fbf6a';
+    setTimeout(()=>{ inputEl.style.borderColor = ''; }, 900);
+  }catch(err){
+    showAlert('Errore: ' + err.message);
+  }finally{
+    inputEl.disabled = false;
+  }
+}
 
 async function populateExportSelector(){
   document.getElementById('es-panel').innerHTML =
@@ -1868,6 +2002,9 @@ async function populateExportSelector(){
   document.getElementById('es-sigaro').disabled = true;
   document.getElementById('esitoStatusNote').textContent = '';
   document.getElementById('esitoAnalysisHost').innerHTML = '';
+  _esitoCurrentPanelNumero = null;
+  _esitoReportDoc = null;
+  await loadEsitoSigariRivistaTable(null);
 }
 
 async function onEsitoPanelChange(){
@@ -1880,7 +2017,7 @@ async function onEsitoPanelChange(){
   note.textContent = '';
   _esitoReportDoc = null;
   _esitoCurrentPanelNumero = numero;
-  if(!numero) return;
+  if(!numero){ await loadEsitoSigariRivistaTable(null); return; }
 
   note.textContent = 'Caricamento report…';
   const fileName = `report_panel_${numero}.xml`;
@@ -1940,6 +2077,11 @@ async function onEsitoPanelChange(){
   }catch(err){
     console.error('Errore in onEsitoPanelChange:', err);
     note.textContent = 'Errore nel caricamento del report: ' + err.message;
+  }finally{
+    // Aggiorna SEMPRE la tabella "Sigari del Panel" qui sopra, indipendentemente
+    // dall'esito del caricamento del report (se il report manca/non è valido,
+    // la tabella mostrerà comunque tutti i sigari del panel come "Non presente").
+    await loadEsitoSigariRivistaTable(numero);
   }
 }
 
@@ -2853,7 +2995,36 @@ async function creaSchedaSito(panelNumero, sigaroNumero){
   }
 }
 
-async function esportaInWord(panelNumero, sigaroNumero){
+// Wrapper chiamato dal pulsante "Esporta in Word": prima di generare il
+// documento, controlla — usando lo stesso stato "Presente nel Report Unico"
+// mostrato nella tabella "Sigari del Panel" qui sopra — se TUTTI i sigari
+// del panel hanno una valutazione finale salvata. Se sì, mostra un popup
+// informativo; se no, chiede conferma esplicita prima di procedere con un
+// Word parziale. In entrambi i casi, "Annulla" non genera nulla.
+function esportaInWord(panelNumero, sigaroNumero){
+  panelNumero = panelNumero || _esitoCurrentPanelNumero;
+  sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
+
+  const elenco = _esitoSigariPanel;
+  const tuttiPresenti = elenco.length > 0 && elenco.every(s => s.presente);
+
+  if(tuttiPresenti){
+    askConfirm(
+      'Il Word sarà completo con tutti i sigari del panel ' + panelNumero + '.',
+      () => _eseguiEsportaInWord(panelNumero, sigaroNumero)
+    );
+  }else{
+    const mancanti = elenco.filter(s => !s.presente).map(s => s.numero_sigaro);
+    const dettaglioMancanti = mancanti.length ? ' (mancano: ' + mancanti.join(', ') + ')' : '';
+    askConfirm(
+      'Attenzione: il Word conterrà solo alcuni sigari del panel ' + panelNumero + dettaglioMancanti +
+      '. Vuoi procedere comunque con la creazione del documento?',
+      () => _eseguiEsportaInWord(panelNumero, sigaroNumero)
+    );
+  }
+}
+
+async function _eseguiEsportaInWord(panelNumero, sigaroNumero){
   panelNumero = panelNumero || _esitoCurrentPanelNumero;
   sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
   const status = document.getElementById('esitoValStatus');
@@ -3243,6 +3414,11 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
     }
     status.textContent = msg;
     status.style.color = '#2f7a3f';
+    // Il salvataggio ha appena aggiunto punteggio_finale_combinato a questo
+    // sigaro in _esitoReportDoc (già in memoria): aggiorna subito la tabella
+    // "Sigari del Panel" così lo stato "Presente" riflette il cambiamento
+    // senza dover riselezionare il panel.
+    await loadEsitoSigariRivistaTable(panelNumero);
   }catch(err){
     status.textContent = 'Errore: ' + err.message;
     status.style.color = '#b5202c';
@@ -3403,6 +3579,20 @@ async function generatePanelReport(panelId){
   const entry = (window._archiveRowsByPanel || {})[panelId];
   if(!entry){ showAlert('Dati del panel non disponibili, aggiorna l\'elenco e riprova.'); return; }
   const { rows, numero } = entry;
+
+  const inCorso = rows.filter(r=>!r.completato);
+  if(inCorso.length > 0){
+    const elenco = inCorso.map(r=>r.fullName).join(', ');
+    showAlert(
+      'Impossibile generare il Report Unico: ' + inCorso.length +
+      (inCorso.length === 1 ? ' panelist ha' : ' panelist hanno') +
+      ' ancora il lavoro "In corso" (non completato).\n\n' +
+      'In attesa di sottomissione: ' + elenco + '.\n\n' +
+      'Il report può essere generato solo quando tutti i panelist assegnati al panel hanno completato la sottomissione.'
+    );
+    return;
+  }
+
   const completed = rows.filter(r=>r.completato);
   if(completed.length === 0){
     showAlert('Nessuna sottomissione completata per questo panel: impossibile generare il report.');
