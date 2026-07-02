@@ -2238,12 +2238,11 @@ async function salvaAiInstructions(){
 
 
 function buildPromptValutazioneGlobale(panelisti){
-  const sorted = [...panelisti].sort((a,b)=>a.punteggio-b.punteggio);
-  const minP = sorted[0];
-  const maxP = sorted[sorted.length-1];
-  const incl = panelisti.length > 2 ? panelisti.filter(p=>p!==minP && p!==maxP) : panelisti;
-
-  const dati = incl.map((p,i)=>
+  // NOTA: "panelisti" qui deve già essere la lista filtrata in base alle
+  // checkbox "Presenza nel calcolo" selezionate dall'admin in "Esito
+  // Panel" — nessun trim automatico di punteggio più alto/più basso viene
+  // applicato qui (rimosso: la selezione è manuale, via checkbox).
+  const dati = panelisti.map((p,i)=>
     `Panelist ${i+1} (punteggio ${p.punteggio}):\n` +
     `- Giudizio complessivo/commenti: ${p.commenti || '—'}\n` +
     `- Primo terzo: ${p.ingresso1 || '—'}\n` +
@@ -2256,7 +2255,7 @@ function buildPromptValutazioneGlobale(panelisti){
     ? `Linee guida comportamentali da seguire (definite dall'amministratore in "Configurazioni → Istruzioni Supporto AI"):\n${istruzioniBase}\n\n`
     : '';
 
-  return `${premessa}Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
+  return `${premessa}Ti fornisco i giudizi dei Panelist selezionati per il calcolo su uno stesso sigaro.\n\n${dati}\n\n` +
     `Scrivi una "Valutazione Globale" in ITALIANO che sintetizzi e amalgami questi giudizi, tenendo conto sia della valutazione complessiva che dei tre terzi di ciascun Panelist. Usa una narrazione eclettica e fantasiosa nello stile, ma NON INVENTARE alcuna informazione: sintetizza e amalgama solo ciò che è scritto. Il testo deve restare entro 500 caratteri totali (spazi inclusi, conteggio stile Microsoft Word).\n\n` +
     `Poi traduci letteralmente quel testo in INGLESE, anch'esso entro 500 caratteri (spazi inclusi).\n\n` +
     `Rispondi ESATTAMENTE in questo formato, senza markdown, senza altro testo:\n\nITALIANO:\n<testo qui>\n\nENGLISH:\n<testo qui>`;
@@ -2266,9 +2265,18 @@ function copiaPromptClaude(panelNumero, sigaroNumero){
   panelNumero = panelNumero || _esitoCurrentPanelNumero;
   sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
   const status = document.getElementById('esitoValStatus');
-  const panelisti = estraiPanelistiSigaro(sigaroNumero);
+
+  // Solo i panelist con la checkbox "Presenza nel calcolo" selezionata
+  // (stesso criterio usato per Score/Punteggio in ricalcolaEsitoPunteggio),
+  // non più un trim automatico di punteggio più alto/più basso.
+  const checkboxes = Array.from(document.querySelectorAll('.esito-calc-checkbox'));
+  const panelisti = checkboxes
+    .filter(cb => cb.checked)
+    .map(cb => _esitoPanelistiCorrenti[parseInt(cb.dataset.idx, 10)])
+    .filter(Boolean);
+
   if(panelisti.length === 0){
-    status.textContent = 'Nessun dato disponibile per generare il prompt.';
+    status.textContent = 'Nessun Panelist selezionato nella colonna "Presenza nel calcolo": seleziona almeno un Panelist prima di generare il prompt.';
     status.style.color = '#b5202c';
     return;
   }
