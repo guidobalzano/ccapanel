@@ -2351,9 +2351,15 @@ const SCHEDA_SITO_WATERMARK_PATH = 'templates/watermark-logo.png';
 
 async function scaricaAssetStorage(path){
   try{
-    const { data, error } = await sb.storage.from('panel-exports').download(path);
-    if(error || !data) return null;
-    return new Uint8Array(await data.arrayBuffer());
+    // Signed URL + fetch con cache-busting: il metodo .download() pu\u00f2
+    // restituire una versione cache-ata (CDN storage o cache del
+    // browser) anche dopo aver sovrascritto il file con lo stesso path.
+    const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(path, 60);
+    if(signErr || !signedData?.signedUrl) return null;
+    const bustUrl = signedData.signedUrl + (signedData.signedUrl.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+    const resp = await fetch(bustUrl, { cache: 'no-store' });
+    if(!resp.ok) return null;
+    return new Uint8Array(await resp.arrayBuffer());
   }catch(e){ console.error('Errore scaricando asset', path, e); return null; }
 }
 
@@ -2482,7 +2488,7 @@ async function schedaSitoOrizzontalizzaFoto(rawBytes){
     const outCtx = outCanvas.getContext('2d');
     if(ruota){
       outCtx.translate(subjH/2, subjW/2);
-      outCtx.rotate(Math.PI/2);
+      outCtx.rotate(-Math.PI/2);
       outCtx.drawImage(workCanvas, sx0, sy0, subjW, subjH, -subjW/2, -subjH/2, subjW, subjH);
     }else{
       outCtx.drawImage(workCanvas, sx0, sy0, subjW, subjH, 0, 0, subjW, subjH);
@@ -2723,10 +2729,9 @@ async function creaSchedaSito(panelNumero, sigaroNumero){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1500);
 
-    status.textContent = '\u2713 Scheda Sito generata: ' + fileName +
-      (usingPoppins ? '' : ' (font Poppins non trovati su Storage: usati i font PDF standard come fallback)') +
-      (fotoInfo && fotoInfo.debug ? ' | Foto: ' + fotoInfo.debug : (fotoPath ? ' | Foto: non elaborata (vedi console)' : ' | Nessuna foto in anagrafica'));
+    status.textContent = '\u2713 Scheda Sito generata: ' + fileName;
     status.style.color = '#2f7a3f';
+    if(!usingPoppins) console.warn('[Scheda Sito] Font Poppins non trovati su Storage: usati i font PDF standard come fallback.');
     showAlert('Download completato: ' + fileName);
   }catch(err){
     console.error(err);
