@@ -1988,16 +1988,58 @@ async function loadEsitoSigariRivistaTable(panelNumero){
         <input type="text" class="numero-rivista-input" data-sigaro-id="${r.id}"
           value="${escapeHtml(r.numero_rivista || '')}" placeholder="es. 01"
           style="width:80px;text-align:center;"
+          oninput="validaNumeroRivistaLive(${r.id}, this)"
           onchange="salvaNumeroRivista(${r.id}, this.value, this)">
+        <div id="rivista-err-${r.id}" class="hidden" style="color:var(--red);font-size:11px;margin-top:4px;max-width:150px;line-height:1.3;"></div>
       </td>
     </tr>
   `).join('');
 }
 
+// Controllo di unicità: essendo il numero progressivo rivista inserito
+// manualmente dall'admin, un duplicato è un errore umano — va segnalato
+// subito (in tempo reale, mentre si digita) e bloccato al salvataggio,
+// non solo scoraggiato. Il confronto è tra i sigari dello stesso panel
+// (quelli attualmente in _esitoSigariPanel).
+function _trovaDuplicatoRivista(sigaroId, valore){
+  const val = String(valore || '').trim();
+  if(!val) return null;
+  return _esitoSigariPanel.find(r => r.id !== sigaroId && String(r.numero_rivista || '').trim() === val) || null;
+}
+
+// Feedback visivo immediato mentre l'admin digita (bordo rosso + nota),
+// senza ancora tentare alcun salvataggio: il salvataggio vero e proprio
+// (con blocco effettivo) avviene solo su onchange, in salvaNumeroRivista.
+function validaNumeroRivistaLive(sigaroId, inputEl){
+  const errEl = document.getElementById('rivista-err-' + sigaroId);
+  const dup = _trovaDuplicatoRivista(sigaroId, inputEl.value);
+  if(dup){
+    inputEl.style.borderColor = 'var(--red)';
+    if(errEl){ errEl.textContent = 'Già usato per Sigaro ' + dup.numero_sigaro; errEl.classList.remove('hidden'); }
+  }else{
+    inputEl.style.borderColor = '';
+    if(errEl){ errEl.classList.add('hidden'); }
+  }
+}
+
 // Salva il numero progressivo di rivista per un singolo sigaro (upsert sul
-// campo 'numero_rivista' della riga corrispondente in 'sigari').
+// campo 'numero_rivista' della riga corrispondente in 'sigari'). Blocca il
+// salvataggio se il valore è già usato da un altro sigaro dello stesso panel.
 async function salvaNumeroRivista(sigaroId, valore, inputEl){
   const val = (valore || '').trim();
+  const errEl = document.getElementById('rivista-err-' + sigaroId);
+
+  const dup = _trovaDuplicatoRivista(sigaroId, val);
+  if(dup){
+    inputEl.style.borderColor = 'var(--red)';
+    if(errEl){ errEl.textContent = 'Già assegnato al Sigaro ' + dup.numero_sigaro + '.'; errEl.classList.remove('hidden'); }
+    showAlert('Il numero progressivo "' + val + '" è già assegnato al Sigaro ' + dup.numero_sigaro + ' di questo panel. Ogni sigaro deve avere un numero univoco: scegline uno diverso.');
+    // Ripristina il valore precedentemente salvato, senza scrivere nulla sul DB.
+    const row = _esitoSigariPanel.find(r => r.id === sigaroId);
+    inputEl.value = row ? (row.numero_rivista || '') : '';
+    return;
+  }
+
   inputEl.disabled = true;
   try{
     const { error } = await sb.from('sigari').update({ numero_rivista: val || null }).eq('id', sigaroId);
@@ -2008,6 +2050,7 @@ async function salvaNumeroRivista(sigaroId, valore, inputEl){
     const row = _esitoSigariPanel.find(r => r.id === sigaroId);
     if(row) row.numero_rivista = val || null;
     inputEl.style.borderColor = '#5fbf6a';
+    if(errEl) errEl.classList.add('hidden');
     setTimeout(()=>{ inputEl.style.borderColor = ''; }, 900);
   }catch(err){
     showAlert('Errore: ' + err.message);
@@ -3086,14 +3129,47 @@ async function _eseguiEsportaInWord(panelNumero, sigaroNumero){
     };
 
     // ---- raccoglie tutti i gruppo_sigaro con una valutazione salvata,
-    //      in ordine numerico crescente ----
+    //      in ordine di "N. progressivo rivista" (assegnato dall'admin in
+    //      "Sigari del Panel", NON più il numero del sigaro) ----
     const tutti = Array.from(freshDoc.getElementsByTagName('gruppo_sigaro'));
     const conValutazione = tutti.filter(el => el.getElementsByTagName('punteggio_finale_combinato')[0]);
+
+    // Il numero progressivo rivista vive sulla tabella 'sigari' (colonna
+    // 'numero_rivista'), non nel report XML: va recuperato prima di
+    // ordinare. Se la colonna non esiste ancora o la query fallisce, si
+    // ripiega sull'ordine per numero del sigaro (comportamento precedente),
+    // così l'export non si blocca mai.
+    const panelRowPerOrdine = _panelsCache.find(p => String(p.numero) === String(panelNumero));
+    let rivistaByNumeroSigaro = {};
+    if(panelRowPerOrdine){
+      const { data: sigariPerOrdine, error: ordErr } = await sb.from('sigari')
+        .select('numero_sigaro, numero_rivista')
+        .eq('panel_id', panelRowPerOrdine.id);
+      if(ordErr){
+        console.warn('[Esporta Word] impossibile leggere il numero progressivo rivista, uso il numero del sigaro come ordine di fallback:', ordErr.message);
+      }else{
+        (sigariPerOrdine || []).forEach(s => { rivistaByNumeroSigaro[String(s.numero_sigaro)] = s.numero_rivista; });
+      }
+    }
+    const getRivista = (el) => {
+      const v = rivistaByNumeroSigaro[el.getAttribute('numero')];
+      return (v === undefined || v === null || String(v).trim() === '') ? null : v;
+    };
+
     conValutazione.sort((a,b)=>{
-      const na = parseInt(a.getAttribute('numero'),10);
-      const nb = parseInt(b.getAttribute('numero'),10);
-      if(!isNaN(na) && !isNaN(nb)) return na - nb;
-      return a.getAttribute('numero').localeCompare(b.getAttribute('numero'));
+      const ra = getRivista(a), rb = getRivista(b);
+      // Sigari senza numero progressivo rivista assegnato finiscono in
+      // fondo (ordinati fra loro per numero del sigaro, come fallback stabile).
+      if(ra === null && rb === null){
+        const na = parseInt(a.getAttribute('numero'),10), nb = parseInt(b.getAttribute('numero'),10);
+        if(!isNaN(na) && !isNaN(nb)) return na - nb;
+        return String(a.getAttribute('numero')).localeCompare(String(b.getAttribute('numero')));
+      }
+      if(ra === null) return 1;
+      if(rb === null) return -1;
+      const nra = parseInt(ra,10), nrb = parseInt(rb,10);
+      if(!isNaN(nra) && !isNaN(nrb)) return nra - nrb;
+      return String(ra).localeCompare(String(rb));
     });
 
     if(conValutazione.length === 0){
@@ -3142,9 +3218,6 @@ async function _eseguiEsportaInWord(panelNumero, sigaroNumero){
     //      (ciclo ASYNC: per ognuno pu\u00f2 servire scaricare la foto) ----
     const blocchi = [];
     for(const sigaroEl of conValutazione){
-      const numeroRaw = sigaroEl.getAttribute('numero') || '';
-      const numeroPadded = /^\d+$/.test(numeroRaw) ? numeroRaw.padStart(2,'0') : numeroRaw;
-
       const puntEl = sigaroEl.getElementsByTagName('punteggio_finale_combinato')[0];
       // punteggio_finale_combinato contiene direttamente il Punteggio
       // Normalizzato (intero 1-5) impostato dall'admin in "Esito Panel".
@@ -3210,7 +3283,11 @@ async function _eseguiEsportaInWord(panelNumero, sigaroNumero){
       }
 
       // --- campi anagrafica (token <...> unici nel blocco, sostituzione diretta) ---
-      blocco = sostituisci(blocco, '&lt;numero sigaro&gt;', xEsc(numeroPadded));
+      // Il numero del sigaro non viene più stampato nel documento: da
+      // quando l'ordine dei blocchi segue il "N. progressivo rivista"
+      // (assegnato in "Sigari del Panel"), mostrare il numero del sigaro
+      // in questa posizione sarebbe fuorviante/incoerente con l'ordine visivo.
+      blocco = sostituisci(blocco, '&lt;numero sigaro&gt;', '');
       blocco = sostituisci(blocco, '&lt;da campo Produttore&gt;', xEsc(produttore));
       blocco = sostituisci(blocco, '&lt;da campo vitola de salida&gt;', xEsc(vitolaSalida));
       blocco = sostituisci(blocco, '&lt;da campo Paese&gt;', xEsc(paese));
@@ -3335,22 +3412,25 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
     .filter(Boolean);
 
   // Recupera l'anagrafica del sigaro (chiave: numero panel + numero sigaro)
-  // per includerla nel report XML insieme alle valutazioni.
+  // e il "N. progressivo rivista" assegnato dall'admin, per includerli
+  // entrambi nel report XML insieme alle valutazioni.
   let anagrafica = null;
   let anagraficaErrore = null;
+  let numeroRivistaValore = null;
   try{
     const panelRow = _panelsCache.find(p => String(p.numero) === String(panelNumero));
     if(!panelRow){
       anagraficaErrore = 'panel non trovato in cache';
     }else{
       const { data: sigaroRow, error: sigaroErr } = await sb.from('sigari')
-        .select('id')
+        .select('id, numero_rivista')
         .eq('panel_id', panelRow.id)
         .eq('numero_sigaro', sigaroNumero)
         .maybeSingle();
       if(sigaroErr){
         anagraficaErrore = sigaroErr.message;
       }else if(sigaroRow){
+        numeroRivistaValore = sigaroRow.numero_rivista || null;
         const { data: anagraficaRow, error: anagErr } = await sb.from('sigari_anagrafica')
           .select('*')
           .eq('sigaro_id', sigaroRow.id)
@@ -3363,7 +3443,7 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
     anagraficaErrore = err.message;
   }
 
-  ['valutazione_globale_ita','valutazione_globale_eng','punteggio_finale_combinato','panelisti_esclusi','anagrafica_sigaro','forza_calcolata','flag_ok','flag_best_buy'].forEach(tag=>{
+  ['valutazione_globale_ita','valutazione_globale_eng','punteggio_finale_combinato','panelisti_esclusi','anagrafica_sigaro','forza_calcolata','flag_ok','flag_best_buy','numero_rivista'].forEach(tag=>{
     const existing = sigaroEl.getElementsByTagName(tag)[0];
     if(existing) sigaroEl.removeChild(existing);
   });
@@ -3375,10 +3455,13 @@ async function salvaValutazioniNelReport(panelNumero, sigaroNumero){
   puntNode.textContent = String(punteggioNormalizzato);
   const esclusiNode = _esitoReportDoc.createElement('panelisti_esclusi');
   esclusiNode.textContent = panelistiEsclusi.join('|');
+  const rivistaNode = _esitoReportDoc.createElement('numero_rivista');
+  rivistaNode.textContent = numeroRivistaValore || '';
   sigaroEl.appendChild(itaNode);
   sigaroEl.appendChild(engNode);
   sigaroEl.appendChild(puntNode);
   sigaroEl.appendChild(esclusiNode);
+  sigaroEl.appendChild(rivistaNode);
 
   // Forza calcolata (media aritmetica di tutti i terzi dei panelist inclusi,
   // arrotondata solo sul risultato finale) e flag OK!/Best Buy scelti dall'admin.
