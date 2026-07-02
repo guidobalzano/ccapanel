@@ -1910,15 +1910,15 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <div style="margin-top:34px;">
         <div class="block-title cap" style="display:inline-block;background:var(--gold);color:var(--ink);padding:6px 14px;border-radius:2px;">Calcolo Punteggio Globale</div>
 
-        <div style="overflow-x:auto;margin-top:18px;">
-          <table class="admin-table" style="min-width:420px;max-width:520px;">
-            <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
-            <tbody id="esitoCalcTableBody">${calcRows}</tbody>
-          </table>
-        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;margin-top:18px;">
+          <div style="overflow-x:auto;flex:1 1 320px;">
+            <table class="admin-table" style="min-width:420px;max-width:520px;">
+              <thead><tr><th>Panelist</th><th>Giudizio Finale</th><th>Presenza nel calcolo</th></tr></thead>
+              <tbody id="esitoCalcTableBody">${calcRows}</tbody>
+            </table>
+          </div>
 
-        <div style="display:flex;justify-content:center;margin-top:30px;">
-          <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:260px;">
+          <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:260px;flex:0 0 260px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
               <span class="subtle cap" style="font-size:13px;">Forza</span>
               <input type="number" id="esitoForzaValue" min="1" max="5" step="1"
@@ -1934,6 +1934,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
             </label>
           </div>
         </div>
+
 
         <div style="display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start;margin-top:26px;">
           <div style="text-align:center;">
