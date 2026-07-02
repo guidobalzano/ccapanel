@@ -747,6 +747,31 @@ function confirmModalCancel(){
 // form di registrazione). Gli account Panelist vengono creati solo
 // dall'amministratore, tramite admin.html.
 
+/* ============================================================
+   HEARTBEAT "ONLINE" — aggiorna profiles.last_seen_at ogni 15s
+   mentre l'utente ha la pagina aperta e loggata, cosi' l'admin
+   puo' vedere chi e' collegato in questo momento.
+   ============================================================ */
+let _heartbeatInterval = null;
+const HEARTBEAT_INTERVALLO_MS = 15000;
+
+async function inviaHeartbeat(){
+  if(!currentUser) return;
+  try{
+    await sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', currentUser.id);
+  }catch(e){ console.warn('Heartbeat non riuscito:', e); }
+}
+
+function avviaHeartbeat(){
+  fermaHeartbeat();
+  inviaHeartbeat(); // subito, senza aspettare il primo intervallo
+  _heartbeatInterval = setInterval(inviaHeartbeat, HEARTBEAT_INTERVALLO_MS);
+}
+
+function fermaHeartbeat(){
+  if(_heartbeatInterval){ clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
+}
+
 async function doLogin(){
   const email = document.getElementById('li-email').value.trim().toLowerCase();
   const pass = document.getElementById('li-pass').value;
@@ -768,6 +793,7 @@ async function afterAuthSuccess(){
     return;
   }
   currentUser = { id: profile.id, username: profile.username, name: profile.full_name, role: profile.role };
+  avviaHeartbeat();
   document.getElementById('loginShell').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('whoName').textContent = currentUser.name;
@@ -845,6 +871,7 @@ async function changeOwnPassword(){
 }
 
 async function logout(){
+  fermaHeartbeat();
   await sb.auth.signOut();
   currentUser = null;
   document.getElementById('app').classList.add('hidden');
