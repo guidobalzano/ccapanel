@@ -78,6 +78,8 @@ a{color:var(--gold-light);}
 .btn-small{padding:6px 12px;font-size:11px;}
 .btn-danger{border-color:var(--red);color:var(--red);}
 .btn-danger:hover{background:var(--red);color:#fff;}
+.btn-white{background:#fff;border-color:#fff;color:#1c1712;}
+.btn-white:hover{background:var(--gold);border-color:var(--gold);color:#1c1712;}
 
 /* ===== Layout ===== */
 .wrap{max-width:1180px;margin:0 auto;padding:40px 28px 90px;}
@@ -603,7 +605,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
 
     <!-- ===== TAB: PANELIST ===== -->
     <div id="tab-users" class="admin-panel hidden">
-      <div class="section-title"><h2>Panelist registrati</h2><div class="rule"></div></div>
+      <div class="section-title"><h2>Utenti registrati</h2><div class="rule"></div></div>
 
       <div class="block-hint">Aggiungi un nuovo Panelist (o admin) con email e password iniziali.</div>
       <div class="inline-form">
@@ -619,7 +621,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
           </select>
         </div>
         <div class="field"><label>Password iniziale (opzionale)</label><input type="text" id="np-password" placeholder="Lascia vuoto per usare il default"></div>
-        <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Panelist</button>
+        <button class="btn btn-primary" onclick="createPanelist()">＋ Crea Utente</button>
       </div>
 
       <table class="admin-table" style="margin-top:30px;">
@@ -2004,7 +2006,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-primary btn-small" onclick="salvaValutazioniNelReport()">Salva nel Report</button>
         <button class="btn btn-ghost btn-small" onclick="esportaInWord()">Esporta in Word</button>
-        <button class="btn btn-ghost btn-small" onclick="creaSchedaSito()">Crea Scheda Sito</button>
+        <button class="btn btn-white btn-small" onclick="creaSchedaSito()">Crea Scheda Sito</button>
       </div>
       <div id="esitoValStatus" class="subtle" style="margin-top:8px;"></div>
     </div>
