@@ -2002,6 +2002,7 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
       <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-primary btn-small" onclick="salvaValutazioniNelReport()">Salva nel Report</button>
         <button class="btn btn-ghost btn-small" onclick="esportaInWord()">Esporta in Word</button>
+        <button class="btn btn-ghost btn-small" onclick="creaSchedaSito()">Crea Scheda Sito</button>
       </div>
       <div id="esitoValStatus" class="subtle" style="margin-top:8px;"></div>
     </div>
@@ -2319,6 +2320,13 @@ function applicaRispostaIncollata(){
   aggiornaConteggioCaratteri('esitoValEng','esitoCountEng');
   status.textContent = '✓ Testo applicato. Ricordati di "Salva nel Report" per renderlo definitivo.';
   status.style.color = '#2f7a3f';
+}
+
+// TODO: funzione da definire — cosa deve produrre "Crea Scheda Sito"
+// (testo per il sito, file da esportare, dati da copiare, ecc.).
+// Per ora è solo un segnaposto collegato al bottone.
+function creaSchedaSito(){
+  showAlert('Funzione "Crea Scheda Sito" non ancora implementata: dimmi cosa deve produrre e la completo.');
 }
 
 async function esportaInWord(panelNumero, sigaroNumero){
