@@ -758,8 +758,9 @@ const HEARTBEAT_INTERVALLO_MS = 15000;
 async function inviaHeartbeat(){
   if(!currentUser) return;
   try{
-    await sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', currentUser.id);
-  }catch(e){ console.warn('Heartbeat non riuscito:', e); }
+    const { error } = await sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', currentUser.id);
+    if(error) console.error('[Heartbeat] aggiornamento last_seen_at fallito:', error.message);
+  }catch(e){ console.error('[Heartbeat] eccezione:', e); }
 }
 
 function avviaHeartbeat(){

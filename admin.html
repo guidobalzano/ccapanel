@@ -606,7 +606,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     <!-- ===== TAB: PANELIST ===== -->
     <div id="tab-users" class="admin-panel hidden">
       <div class="section-title"><h2>Utenti registrati</h2><div class="rule"></div></div>
-
+      <div id="usersOnlineWarning" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:3px;font-size:13px;margin-bottom:14px;"></div>
       <div class="block-hint">Aggiungi un nuovo Panelist (o admin) con email e password iniziali.</div>
       <div class="inline-form">
         <div class="field"><label>Nome</label><input type="text" id="np-nome" placeholder="es. Guido"></div>
@@ -925,8 +925,14 @@ const HEARTBEAT_INTERVALLO_MS = 15000;
 async function inviaHeartbeat(){
   if(!currentUser) return;
   try{
-    await sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', currentUser.id);
-  }catch(e){ console.warn('Heartbeat non riuscito:', e); }
+    const { error } = await sb.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', currentUser.id);
+    if(error){
+      // NOTA: le chiamate Supabase-js non lanciano eccezioni sugli errori
+      // Postgrest/RLS: vanno controllate esplicitamente sul campo "error",
+      // altrimenti un fallimento (es. colonna mancante) passa inosservato.
+      console.error('[Heartbeat] aggiornamento last_seen_at fallito:', error.message);
+    }
+  }catch(e){ console.error('[Heartbeat] eccezione:', e); }
 }
 
 function avviaHeartbeat(){
@@ -1639,6 +1645,20 @@ async function loadUsersTable(){
   const { data, error } = await sb.from('profiles').select('*').order('full_name');
   if(error){ console.error(error); return; }
   _usersCache = data || [];
+
+  // Distingue "colonna last_seen_at assente nel DB" da "nessuno online":
+  // se la chiave non esiste PROPRIO nell'oggetto (nemmeno come null),
+  // vuol dire che la migrazione SQL non è stata eseguita.
+  const warningEl = document.getElementById('usersOnlineWarning');
+  const colonnaPresente = _usersCache.length === 0 || _usersCache.some(u => 'last_seen_at' in u);
+  if(warningEl){
+    if(!colonnaPresente){
+      warningEl.textContent = '⚠ La colonna "last_seen_at" non esiste nella tabella profiles: lo stato Online non può funzionare. Esegui in Supabase → SQL Editor: alter table public.profiles add column if not exists last_seen_at timestamptz;';
+      warningEl.classList.remove('hidden');
+    }else{
+      warningEl.classList.add('hidden');
+    }
+  }
 
   // recupera le email (richiede ruolo admin, vedi funzione SQL list_user_emails)
   try{
