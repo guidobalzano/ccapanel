@@ -2253,7 +2253,7 @@ function buildPromptValutazioneGlobale(panelisti){
     ? `Linee guida comportamentali da seguire (definite dall'amministratore in "Configurazioni → Istruzioni Supporto AI"):\n${istruzioniBase}\n\n`
     : '';
 
-  return `${premessa}Sei un redattore esperto di sigari. Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
+  return `${premessa}Ti fornisco i giudizi di alcuni Panelist su uno stesso sigaro (punteggio più alto e più basso già esclusi).\n\n${dati}\n\n` +
     `Scrivi una "Valutazione Globale" in ITALIANO che sintetizzi e amalgami questi giudizi, tenendo conto sia della valutazione complessiva che dei tre terzi di ciascun Panelist. Usa una narrazione eclettica e fantasiosa nello stile, ma NON INVENTARE alcuna informazione: sintetizza e amalgama solo ciò che è scritto. Il testo deve restare entro 500 caratteri totali (spazi inclusi, conteggio stile Microsoft Word).\n\n` +
     `Poi traduci letteralmente quel testo in INGLESE, anch'esso entro 500 caratteri (spazi inclusi).\n\n` +
     `Rispondi ESATTAMENTE in questo formato, senza markdown, senza altro testo:\n\nITALIANO:\n<testo qui>\n\nENGLISH:\n<testo qui>`;
