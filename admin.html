@@ -774,6 +774,8 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="score-bands.js"></script>
 <script>
 window.CCA_CONFIG = {
@@ -2322,11 +2324,340 @@ function applicaRispostaIncollata(){
   status.style.color = '#2f7a3f';
 }
 
-// TODO: funzione da definire — cosa deve produrre "Crea Scheda Sito"
-// (testo per il sito, file da esportare, dati da copiare, ecc.).
-// Per ora è solo un segnaposto collegato al bottone.
-function creaSchedaSito(){
-  showAlert('Funzione "Crea Scheda Sito" non ancora implementata: dimmi cosa deve produrre e la completo.');
+// ============================================================
+// "Crea Scheda Sito" — genera un PDF per il singolo sigaro con la
+// grafica del modello fornito dal cliente (titolo, foto, lista dati,
+// due paragrafi ITA/ENG, watermark). I dati (anagrafica, valutazioni,
+// punteggio 1-5) vengono letti dal report XML già salvato tramite
+// "Salva nel Report".
+//
+// Font Poppins (sostituto libero del font brand, non disponibile) e
+// il logo watermark "Cigar Club Association" vengono scaricati al
+// volo dal bucket Storage 'panel-exports'; se mancano, la funzione
+// usa automaticamente i font PDF standard e salta il watermark,
+// senza bloccare la generazione.
+// ============================================================
+const SCHEDA_SITO_FONT_REGULAR_PATH = 'templates/Poppins-Regular.ttf';
+const SCHEDA_SITO_FONT_BOLD_PATH = 'templates/Poppins-Bold.ttf';
+const SCHEDA_SITO_WATERMARK_PATH = 'templates/watermark-logo.png';
+
+async function scaricaAssetStorage(path){
+  try{
+    const { data, error } = await sb.storage.from('panel-exports').download(path);
+    if(error || !data) return null;
+    return new Uint8Array(await data.arrayBuffer());
+  }catch(e){ console.error('Errore scaricando asset', path, e); return null; }
+}
+
+function schedaSitoWrapLines(text, font, fontSize, maxWidth){
+  const words = String(text||'').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = [];
+  for(const w of words){
+    const test = cur.concat([w]).join(' ');
+    if(cur.length === 0 || font.widthOfTextAtSize(test, fontSize) <= maxWidth){
+      cur.push(w);
+    }else{
+      lines.push(cur.join(' '));
+      cur = [w];
+    }
+  }
+  if(cur.length) lines.push(cur.join(' '));
+  return lines;
+}
+
+// Testo giustificato (spaziatura extra distribuita tra le parole), come
+// nel prototipo di riferimento. Ritorna la y (baseline) dopo l'ultima riga.
+function schedaSitoTestoGiustificato(page, text, x, yTop, width, font, fontSize, leading, color){
+  const lines = schedaSitoWrapLines(text, font, fontSize, width);
+  let y = yTop;
+  lines.forEach((lineText, idx)=>{
+    const isLast = idx === lines.length - 1;
+    const words = lineText.split(/\s+/).filter(Boolean);
+    if(isLast || words.length === 1){
+      page.drawText(lineText, { x, y, size: fontSize, font, color });
+    }else{
+      const naturalW = font.widthOfTextAtSize(lineText, fontSize);
+      const spaceW = font.widthOfTextAtSize(' ', fontSize);
+      const extra = Math.max(0, width - naturalW);
+      const gapExtra = extra / (words.length - 1);
+      let cx = x;
+      words.forEach(w=>{
+        page.drawText(w, { x: cx, y, size: fontSize, font, color });
+        cx += font.widthOfTextAtSize(w, fontSize) + spaceW + gapExtra;
+      });
+    }
+    y -= leading;
+  });
+  return y;
+}
+
+// Se l'immagine è verticale (ritratto), la ruota di 90° via canvas per
+// renderla orizzontale. Ritorna { bytes, isPng } pronti per pdf-lib.
+async function schedaSitoOrizzontalizzaFoto(rawBytes){
+  const dim = leggiDimensioniImmagine(rawBytes);
+  const isPngOriginale = rawBytes[0] === 0x89 && rawBytes[1] === 0x50;
+  if(!dim || dim.height <= dim.width){
+    return { bytes: rawBytes, isPng: isPngOriginale };
+  }
+  const blob = new Blob([rawBytes]);
+  const url = URL.createObjectURL(blob);
+  try{
+    const img = await new Promise((res, rej)=>{
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = url;
+    });
+    const w = dim.width, h = dim.height;
+    const canvasEl = document.createElement('canvas');
+    canvasEl.width = h; canvasEl.height = w;
+    const ctx = canvasEl.getContext('2d');
+    ctx.translate(h/2, w/2);
+    ctx.rotate(Math.PI/2);
+    ctx.drawImage(img, -w/2, -h/2);
+    const outBlob = await new Promise(res => canvasEl.toBlob(res, 'image/png'));
+    const outBytes = new Uint8Array(await outBlob.arrayBuffer());
+    return { bytes: outBytes, isPng: true };
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function creaSchedaSito(panelNumero, sigaroNumero){
+  panelNumero = panelNumero || _esitoCurrentPanelNumero;
+  sigaroNumero = sigaroNumero || _esitoCurrentSigaroNumero;
+  const status = document.getElementById('esitoValStatus');
+  status.textContent = 'Generazione Scheda Sito in corso…';
+  status.style.color = '#5a4632';
+
+  try{
+    if(typeof PDFLib === 'undefined'){
+      throw new Error('Libreria PDF non caricata: verifica la connessione e ricarica la pagina.');
+    }
+    const { PDFDocument, rgb, degrees, StandardFonts } = PDFLib;
+
+    // ---- Ri-scarica il report aggiornato, cos\u00ec riflette sempre
+    //      l'ultimo "Salva nel Report" ----
+    const { data: fileData, error: dlErr } = await sb.storage.from('panel-exports').download(`report_panel_${panelNumero}.xml`);
+    if(dlErr) throw new Error('Impossibile scaricare il report: ' + dlErr.message);
+    const xmlText = await fileData.text();
+    const freshDoc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if(freshDoc.getElementsByTagName('parsererror').length > 0){
+      throw new Error('Il report XML non \u00e8 valido.');
+    }
+
+    const sigari = Array.from(freshDoc.getElementsByTagName('gruppo_sigaro'));
+    const sigaroEl = sigari.find(s => s.getAttribute('numero') === String(sigaroNumero));
+    if(!sigaroEl) throw new Error('Sigaro non trovato nel report.');
+
+    const leggi = (parent, tag) => {
+      const el = parent && parent.getElementsByTagName(tag)[0];
+      return el ? (el.textContent || '').trim() : '';
+    };
+
+    const ita = leggi(sigaroEl, 'valutazione_globale_ita');
+    const eng = leggi(sigaroEl, 'valutazione_globale_eng');
+    const punteggioTxt = leggi(sigaroEl, 'punteggio_finale_combinato');
+    if(!ita || !eng || !punteggioTxt){
+      throw new Error('Nessuna valutazione salvata per questo sigaro. Usa prima "Salva nel Report".');
+    }
+
+    const anagEl = sigaroEl.getElementsByTagName('anagrafica_sigaro')[0] || null;
+    if(!anagEl){
+      throw new Error('Anagrafica del sigaro non disponibile nel report. Compila la Carta d\'Identit\u00e0 (tab "1. Panel") e rifai "Salva nel Report".');
+    }
+
+    const produttore = leggi(anagEl, 'produttore');
+    const vitolaSalida = leggi(anagEl, 'vitola_de_salida');
+    const paese = leggi(anagEl, 'paese');
+    const capa = leggi(anagEl, 'capa');
+    const capote = leggi(anagEl, 'capote');
+    const tripa = leggi(anagEl, 'tripa');
+    const vitolaGalera = leggi(anagEl, 'vitola_de_galera');
+    const misuraRg = leggi(anagEl, 'misura_rg');
+    const misuraMm = leggi(anagEl, 'misura_mm');
+    const prezzo = leggi(anagEl, 'prezzo');
+    const fotoPath = leggi(anagEl, 'foto_path');
+
+    // ---- Righe della lista dati (Medaglie/Punteggio 0-100 rimossi,
+    //      sostituiti dal solo Punteggio 1-5 da "Esito Panel") ----
+    const rows = [];
+    rows.push(['Paese:', paese || '\u2014']);
+    if(capa && capa === capote && capote === tripa){
+      rows.push(['Capa, Capote e Tripa:', capa]);
+    }else{
+      rows.push(['Capa:', capa || '\u2014']);
+      rows.push(['Capote:', capote || '\u2014']);
+      rows.push(['Tripa:', tripa || '\u2014']);
+    }
+    rows.push(['Vitola de galera:', vitolaGalera || '\u2014']);
+    const misureTxt = (misuraMm || misuraRg) ? `${misuraMm || '\u2014'} mm per ${misuraRg || '\u2014'} RG` : '\u2014';
+    rows.push(['Misure:', misureTxt]);
+    rows.push(['Prezzo:', prezzo ? `${prezzo} \u20ac cad.` : '\u2014']);
+    rows.push(['Punteggio:', punteggioTxt]);
+
+    // ---- Foto: scarica ed eventualmente ruota in orizzontale ----
+    let fotoInfo = null;
+    if(fotoPath){
+      try{
+        const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(fotoPath, 120);
+        if(!signErr && signedData && signedData.signedUrl){
+          const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
+          if(resp.ok){
+            const rawBytes = new Uint8Array(await resp.arrayBuffer());
+            fotoInfo = await schedaSitoOrizzontalizzaFoto(rawBytes);
+          }
+        }
+      }catch(e){ console.error('Errore scaricando/ruotando la foto:', e); }
+    }
+
+    // ---- Font: Poppins da Storage, con fallback ai font standard ----
+    const pdfDoc = await PDFDocument.create();
+    const fontkitLib = (typeof fontkit !== 'undefined') ? fontkit : window.fontkit;
+    let fontRegular, fontBold, usingPoppins = false;
+    if(fontkitLib){
+      pdfDoc.registerFontkit(fontkitLib);
+      const [regBytes, boldBytes] = await Promise.all([
+        scaricaAssetStorage(SCHEDA_SITO_FONT_REGULAR_PATH),
+        scaricaAssetStorage(SCHEDA_SITO_FONT_BOLD_PATH),
+      ]);
+      if(regBytes && boldBytes){
+        try{
+          fontRegular = await pdfDoc.embedFont(regBytes);
+          fontBold = await pdfDoc.embedFont(boldBytes);
+          usingPoppins = true;
+        }catch(e){ console.error('Embed Poppins fallito, uso font standard:', e); }
+      }
+    }
+    if(!usingPoppins){
+      fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    }
+
+    const PAGE_W = 595.28, PAGE_H = 841.89;
+    const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    const NAVY = rgb(7/255, 68/255, 115/255);
+    const RED = rgb(171/255, 10/255, 38/255);
+    const BLACK = rgb(0, 0, 0);
+    const GRAY = rgb(0.5, 0.5, 0.5);
+
+    // ---- Watermark (logo Cigar Club Association, ripetuto e leggero) ----
+    const wmBytes = await scaricaAssetStorage(SCHEDA_SITO_WATERMARK_PATH);
+    if(wmBytes){
+      try{
+        const wmImg = await pdfDoc.embedPng(wmBytes);
+        const ratio = 210 / wmImg.width;
+        const dw = wmImg.width * ratio, dh = wmImg.height * ratio;
+        for(let dx = -500; dx < 500; dx += 340){
+          for(let dy = -700; dy < 700; dy += 340){
+            page.drawImage(wmImg, {
+              x: PAGE_W/2 + dx - dw/2,
+              y: PAGE_H/2 + dy - dh/2,
+              width: dw, height: dh,
+              opacity: 0.13,
+              rotate: degrees(25),
+            });
+          }
+        }
+      }catch(e){ console.error('Watermark non applicato:', e); }
+    }
+
+    // ---- Bordo ----
+    page.drawRectangle({
+      x: 7, y: 7, width: PAGE_W - 14, height: PAGE_H - 14,
+      borderColor: BLACK, borderWidth: 3,
+    });
+
+    const LEFT = 58, RIGHT_MARGIN = 58;
+    const TEXT_WIDTH = PAGE_W - LEFT - RIGHT_MARGIN;
+
+    // ---- Titolo: produttore su una o pi\u00f9 righe, poi vitola de
+    //      salida su una o pi\u00f9 righe (si adatta se pi\u00f9 lungo) ----
+    const titleFontSize = 27, titleLeading = 23, maxTitleWidth = 280;
+    const titleLines = [
+      ...schedaSitoWrapLines(produttore.toUpperCase(), fontBold, titleFontSize, maxTitleWidth),
+      ...schedaSitoWrapLines(vitolaSalida.toUpperCase(), fontBold, titleFontSize, maxTitleWidth),
+    ];
+    const titleTop = PAGE_H - 40;
+    titleLines.forEach((line, i) => {
+      page.drawText(line, { x: LEFT, y: titleTop - i * titleLeading, size: titleFontSize, font: fontBold, color: NAVY });
+    });
+    const titleBottom = titleTop - (titleLines.length - 1) * titleLeading - 6;
+
+    // ---- Lista dati (colonna label + colonna valore, larghezza
+    //      valore calcolata sulla label pi\u00f9 lunga effettivamente usata) ----
+    const dataFontSize = 9.5, dataLeading = 14, labelX = 350;
+    const maxLabelW = Math.max(...rows.map(([label]) => fontBold.widthOfTextAtSize(label, dataFontSize)));
+    const valueX = labelX + maxLabelW + 12;
+    const dataTop = PAGE_H - 87;
+    rows.forEach(([label, value], i) => {
+      const y = dataTop - i * dataLeading;
+      page.drawText(label, { x: labelX, y, size: dataFontSize, font: fontBold, color: NAVY });
+      page.drawText(String(value), { x: valueX, y, size: dataFontSize, font: fontRegular, color: NAVY });
+    });
+
+    // ---- Foto (orizzontale, "contain" nel riquadro, posizione
+    //      adattiva subito sotto il titolo) ----
+    const photoBoxW = 286, photoBoxH = 70;
+    const photoBoxTop = titleBottom - 10;
+    const photoBoxY = photoBoxTop - photoBoxH;
+    if(fotoInfo){
+      try{
+        const img = fotoInfo.isPng ? await pdfDoc.embedPng(fotoInfo.bytes) : await pdfDoc.embedJpg(fotoInfo.bytes);
+        const ratio = Math.min(photoBoxW / img.width, photoBoxH / img.height);
+        const dw = img.width * ratio, dh = img.height * ratio;
+        page.drawImage(img, {
+          x: 21 + (photoBoxW - dw) / 2,
+          y: photoBoxY + (photoBoxH - dh) / 2,
+          width: dw, height: dh,
+        });
+      }catch(e){
+        console.error('Foto non incorporata:', e);
+        page.drawText('Nessuna foto disponibile', { x: 21, y: photoBoxY + photoBoxH/2, size: 10, font: fontRegular, color: GRAY });
+      }
+    }else{
+      page.drawText('Nessuna foto disponibile', { x: 21, y: photoBoxY + photoBoxH/2, size: 10, font: fontRegular, color: GRAY });
+    }
+
+    // ---- Divisore 1 (fisso, subito sotto foto/lista dati) ----
+    const divider1Y = photoBoxY - 12;
+    page.drawLine({ start: {x:14, y:divider1Y}, end: {x:PAGE_W-14, y:divider1Y}, thickness: 3.5, color: RED });
+
+    // ---- Testo ITA ----
+    const bodyFontSize = 13, bodyLeading = 17.5;
+    const itaTop = divider1Y - 28;
+    const itaBottom = schedaSitoTestoGiustificato(page, ita, LEFT, itaTop, TEXT_WIDTH, fontRegular, bodyFontSize, bodyLeading, BLACK);
+
+    // ---- Divisore 2 (adattivo: subito sotto il testo ITA, non a
+    //      posizione fissa, cos\u00ec non restano vuoti con testi brevi) ----
+    const divider2Y = itaBottom - 18;
+    page.drawLine({ start: {x:14, y:divider2Y}, end: {x:PAGE_W-14, y:divider2Y}, thickness: 3.5, color: RED });
+
+    // ---- Testo ENG ----
+    const engTop = divider2Y - 28;
+    schedaSitoTestoGiustificato(page, eng, LEFT, engTop, TEXT_WIDTH, fontRegular, bodyFontSize, bodyLeading, BLACK);
+
+    // ---- Salva e scarica ----
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const numeroPad = /^\d+$/.test(String(sigaroNumero)) ? String(sigaroNumero).padStart(2,'0') : sigaroNumero;
+    const fileName = `scheda_sito_panel${panelNumero}_sigaro${numeroPad}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+    status.textContent = '\u2713 Scheda Sito generata: ' + fileName +
+      (usingPoppins ? '' : ' (font Poppins non trovati su Storage: usati i font PDF standard come fallback)');
+    status.style.color = '#2f7a3f';
+    showAlert('Download completato: ' + fileName);
+  }catch(err){
+    console.error(err);
+    status.textContent = 'Errore nella generazione della Scheda Sito: ' + err.message;
+    status.style.color = '#b5202c';
+  }
 }
 
 async function esportaInWord(panelNumero, sigaroNumero){
