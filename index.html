@@ -717,7 +717,7 @@ let currentPanel = null;    // {id, numero, stato}
 let formOrigin = 'panelList';
 let detailOrigin = 'panelList';
 let _panelsCache = [];
-let _myAssignedCache = [];  // sigari assegnati all'utente corrente (tutte le righe v_sigari_assegnati)
+let _myAssignedCache = [];  // sigari assegnati all'utente corrente (vedi loadMyAssignedSigari)
 
 /* ============================================================
    CUSTOM CONFIRM (modale in pagina)
@@ -1033,17 +1033,58 @@ async function loadPanels(){
   renderPanelList();
 }
 
+// Una scheda è considerata "Compilata" solo se ha ALMENO: Giudizio Finale
+// (punteggio + commenti) e Descrizione delle Fasi completa (ingresso,
+// centro, finale). Se manca anche un solo campo di questi, la scheda va
+// trattata come NON compilata, anche se la riga esiste nel DB (bozza).
+// Stessa identica logica duplicata in admin.html: se la cambi, cambiala
+// in entrambi i file.
+function schedaSoddisfaRequisitiMinimi(s){
+  if(!s) return false;
+  const nonVuoto = v => v !== null && v !== undefined && String(v).trim() !== '';
+  return nonVuoto(s.punteggio) && nonVuoto(s.commenti) &&
+         nonVuoto(s.desc_ingresso) && nonVuoto(s.desc_centro) && nonVuoto(s.desc_finale);
+}
+
 async function loadMyAssignedSigari(panelNumero){
-  // sigari assegnati all'utente corrente per un determinato panel,
-  // con eventuale scheda già compilata (left join via v_sigari_assegnati)
-  const { data, error } = await sb
-    .from('v_sigari_assegnati')
-    .select('*')
+  // Sigari assegnati all'utente corrente per un determinato panel. Non usa
+  // più la vista v_sigari_assegnati: espone solo punteggio/commenti, non i
+  // campi di Descrizione delle Fasi necessari per stabilire se una scheda
+  // soddisfa i requisiti minimi di compilazione — quindi due query separate
+  // unite lato client.
+  const { data: assignRows, error: aErr } = await sb
+    .from('assegnazioni')
+    .select('sigaro_id, sigari!inner(numero_sigaro, panels!inner(numero))')
     .eq('utente_id', currentUser.id)
-    .eq('panel_numero', panelNumero)
-    .order('numero_sigaro', {ascending:true});
-  if(error){ console.error(error); return []; }
-  return data || [];
+    .eq('sigari.panels.numero', panelNumero);
+  if(aErr){ console.error(aErr); return []; }
+  const sigaroIds = (assignRows||[]).map(a=>a.sigaro_id);
+  if(sigaroIds.length === 0) return [];
+
+  const { data: schede, error: sErr } = await sb
+    .from('schede_degustazione')
+    .select('id, sigaro_id, punteggio, commenti, data, desc_ingresso, desc_centro, desc_finale')
+    .eq('utente_id', currentUser.id)
+    .in('sigaro_id', sigaroIds);
+  if(sErr) console.error(sErr);
+  const schedaBySigaroId = new Map((schede||[]).map(s=>[s.sigaro_id, s]));
+
+  return assignRows.map(a=>{
+    const s = schedaBySigaroId.get(a.sigaro_id);
+    return {
+      sigaro_id: a.sigaro_id,
+      numero_sigaro: a.sigari.numero_sigaro,
+      scheda_id: s ? s.id : null,       // riga esistente nel DB (bozza o completa)
+      punteggio: s ? s.punteggio : null,
+      commenti: s ? s.commenti : null,
+      data: s ? s.data : null,
+      compilata: schedaSoddisfaRequisitiMinimi(s), // soddisfa i requisiti minimi
+    };
+  }).sort((a,b)=>{
+    const na=parseInt(a.numero_sigaro,10), nb=parseInt(b.numero_sigaro,10);
+    if(!isNaN(na) && !isNaN(nb)) return na-nb;
+    return String(a.numero_sigaro).localeCompare(String(b.numero_sigaro));
+  });
 }
 
 /* ============================================================
@@ -1077,7 +1118,7 @@ function renderPanelList(){
 
     // popola conteggio sigari assegnati in modo asincrono
     loadMyAssignedSigari(panel.numero).then(list=>{
-      const doneCount = list.filter(x=>x.scheda_id).length;
+      const doneCount = list.filter(x=>x.compilata).length;
       const dateEl = card.querySelector('.cig-date');
       const metaEl = card.querySelector('.meta');
       dateEl.textContent = list.length + ' sigari assegnati';
@@ -1194,7 +1235,11 @@ async function renderPanelDetail(){
       <div class="cig-no">Sigaro n. ${escapeHtml(row.numero_sigaro)}</div>
       <div class="cig-date">${existing ? 'Degustato il ' + formatDate(row.data) : 'Da degustare'}</div>
       <div class="score">${existing && row.punteggio ? row.punteggio : ''}</div>
-      <div class="meta">${existing ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento') : (locked ? (_currentPanelSubmitted ? 'Panel già sottomesso' : 'Panel chiuso dall\'admin') : 'Clicca per avviare la scheda di degustazione')}</div>
+      <div class="meta">${existing
+        ? (row.compilata
+            ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento')
+            : '<span style="color:var(--gold, #c9a25e);">⚠ Bozza incompleta — mancano campi obbligatori (giudizio finale e/o descrizione delle fasi)</span>')
+        : (locked ? (_currentPanelSubmitted ? 'Panel già sottomesso' : 'Panel chiuso dall\'admin') : 'Clicca per avviare la scheda di degustazione')}</div>
       <div class="card-actions">${actionsHtml}</div>
     `;
     if(existing){
@@ -1653,7 +1698,7 @@ async function exportPanel(){
   const assigned = await loadMyAssignedSigari(currentPanel.numero);
   if(!assigned || assigned.length === 0){ showAlert('Nessun sigaro assegnato in questo panel.'); return; }
 
-  // v_sigari_assegnati (usata sopra) espone solo un sottoinsieme di campi;
+  // loadMyAssignedSigari (usata sopra) espone solo un sottoinsieme di campi;
   // per i sigari compilati serve il record completo della scheda per l'export XML.
   const { data, error } = await sb
     .from('schede_degustazione')
@@ -1665,8 +1710,12 @@ async function exportPanel(){
   const schedaPerSigaroId = new Map((data||[]).map(t => [t.sigaro_id, t]));
   const body = assigned.map(row=>{
     const full = schedaPerSigaroId.get(row.sigaro_id);
-    return full ? tasteToXml(full, currentPanel.numero, row.numero_sigaro)
-                : sigaroNonCompilatoToXml(currentPanel.numero, row.numero_sigaro);
+    // Una bozza esistente ma incompleta (manca giudizio finale e/o
+    // descrizione delle fasi) viene trattata come NON compilata: "quel che
+    // fatto è fatto" vale anche qui, il dato parziale non viene incluso.
+    return schedaSoddisfaRequisitiMinimi(full)
+      ? tasteToXml(full, currentPanel.numero, row.numero_sigaro)
+      : sigaroNonCompilatoToXml(currentPanel.numero, row.numero_sigaro);
   }).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<schede_degustazione catador="${xmlEsc(currentUser.name)}" panel="${xmlEsc(currentPanel.numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}\n</schede_degustazione>`;
 

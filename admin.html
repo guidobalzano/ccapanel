@@ -1575,6 +1575,19 @@ async function createAssignment(){
   await renderSigariTable();
 }
 
+// Una scheda è considerata "Compilata" solo se ha ALMENO: Giudizio Finale
+// (punteggio + commenti) e Descrizione delle Fasi completa (ingresso,
+// centro, finale). Se manca anche un solo campo di questi, la scheda va
+// trattata come NON compilata, anche se la riga esiste nel DB (bozza).
+// Stessa identica logica duplicata in index.html: se la cambi, cambiala
+// in entrambi i file.
+function schedaSoddisfaRequisitiMinimi(s){
+  if(!s) return false;
+  const nonVuoto = v => v !== null && v !== undefined && String(v).trim() !== '';
+  return nonVuoto(s.punteggio) && nonVuoto(s.commenti) &&
+         nonVuoto(s.desc_ingresso) && nonVuoto(s.desc_centro) && nonVuoto(s.desc_finale);
+}
+
 async function renderAssignTable(){
   const tbody = document.getElementById('assignTableBody');
   tbody.innerHTML = '<tr><td colspan="5">Caricamento…</td></tr>';
@@ -1584,13 +1597,17 @@ async function renderAssignTable(){
     .order('id', {ascending:false});
   if(error){ tbody.innerHTML = '<tr><td colspan="5">Errore di caricamento.</td></tr>'; return; }
 
-  // stato scheda per ciascuna assegnazione
-  const { data: schede } = await sb.from('schede_degustazione').select('sigaro_id, utente_id, punteggio');
+  // stato scheda per ciascuna assegnazione — servono tutti i campi
+  // richiesti dalla validazione, non solo il punteggio.
+  const { data: schede } = await sb.from('schede_degustazione')
+    .select('sigaro_id, utente_id, punteggio, commenti, desc_ingresso, desc_centro, desc_finale');
 
   tbody.innerHTML = '';
   (data||[]).forEach(a=>{
     const scheda = (schede||[]).find(s=>s.sigaro_id===a.sigaro_id && s.utente_id===a.utente_id);
-    const stato = scheda ? ('Compilata' + (scheda.punteggio? ' · '+scheda.punteggio : '')) : 'In attesa';
+    const compilata = schedaSoddisfaRequisitiMinimi(scheda);
+    const stato = compilata ? ('Compilata' + (scheda.punteggio? ' · '+scheda.punteggio : ''))
+                : (scheda ? 'Bozza incompleta' : 'In attesa');
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Panel">Panel ${escapeHtml(a.sigari?.panels?.numero ?? '—')}</td>
