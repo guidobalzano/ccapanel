@@ -3572,11 +3572,11 @@ async function generatePanelReport(panelId){
     return;
   }
 
+  // Non si blocca più a priori se nessuno ha sottomesso: si genera
+  // comunque il report (anche vuoto) — un panel dove tutti sono
+  // "scaduto" senza aver mai sottomesso deve poter produrre un Report
+  // Unico vuoto, non restare bloccato per sempre.
   const completed = rows.filter(r=>r.completato);
-  if(completed.length === 0){
-    showAlert('Nessuna sottomissione completata per questo panel: impossibile generare il report.');
-    return;
-  }
 
   const sigaroMap = {};
   const erroriParsing = [];
@@ -3613,16 +3613,15 @@ async function generatePanelReport(panelId){
     });
   }
 
+  // Idem qui: zero schede lette (nessun file da leggere, o tutti con
+  // errori di parsing) non blocca più — si genera comunque il report,
+  // vuoto o parziale, con gli eventuali errori riportati nel messaggio
+  // finale invece che come blocco upfront.
   const sigariSorted = Object.keys(sigaroMap).sort((a,b)=>{
     const na = parseInt(a,10), nb = parseInt(b,10);
     if(!isNaN(na) && !isNaN(nb)) return na-nb;
     return a.localeCompare(b);
   });
-
-  if(sigariSorted.length === 0){
-    showAlert('Non è stato possibile leggere nessuna scheda valida dagli XML sottomessi.' + (erroriParsing.length? ' Dettagli: ' + erroriParsing.join('; ') : ''));
-    return;
-  }
 
   let body = '';
   sigariSorted.forEach(sigaroNum=>{
@@ -3641,7 +3640,14 @@ async function generatePanelReport(panelId){
     const { error: upErr } = await sb.storage.from('panel-exports')
       .upload(reportFileName, blob, { upsert:true, contentType:'application/xml' });
     if(upErr){ showAlert('Errore nel salvataggio del report: ' + upErr.message); return; }
-    showAlert('Report unico del Panel ' + numero + ' generato e salvato come "' + reportFileName + '".' + (erroriParsing.length? ' Attenzione, alcuni file non sono stati inclusi: ' + erroriParsing.join('; ') : ''));
+    let msg = 'Report unico del Panel ' + numero + ' generato e salvato come "' + reportFileName + '".';
+    if(sigariSorted.length === 0){
+      msg += '\n\n⚠ Il report è VUOTO: nessun panelist ha sottomesso schede leggibili per questo panel.';
+    }
+    if(erroriParsing.length){
+      msg += '\n\nAttenzione, alcuni file non sono stati inclusi: ' + erroriParsing.join('; ');
+    }
+    showAlert(msg);
     await loadArchiveTable();
   }catch(err){
     showAlert('Errore: ' + err.message);
