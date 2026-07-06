@@ -3553,7 +3553,13 @@ async function generatePanelReport(panelId){
   if(!entry){ showAlert('Dati del panel non disponibili, aggiorna l\'elenco e riprova.'); return; }
   const { rows, numero } = entry;
 
-  const inCorso = rows.filter(r=>!r.completato);
+  // "In corso" ai fini del blocco significa: il panel è ancora aperto E
+  // questo panelist non ha ancora sottomesso — quindi c'è ancora una
+  // possibilità reale che lo faccia, vale la pena aspettare. Un panelist
+  // "scaduto" (tempo scaduto, non più in grado di sottomettere: vedi
+  // colonna Stato) NON deve bloccare la generazione, coerentemente col
+  // fatto che il suo badge mostra già "Completato".
+  const inCorso = rows.filter(r=>!r.completato && !r.scaduto);
   if(inCorso.length > 0){
     const elenco = inCorso.map(r=>r.fullName).join(', ');
     showAlert(
