@@ -2323,6 +2323,7 @@ function onEsitoSigaroChange(){
 
   const panelistEls = Array.from(sigaroEl.getElementsByTagName('panelist'));
   const panelisti = panelistEls.map(pEl=>{
+    const schedaEl = pEl.querySelector('scheda');
     const punteggioEl = pEl.querySelector('giudizio_finale > punteggio');
     const commentiEl = pEl.querySelector('giudizio_finale > commenti');
     const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
@@ -2331,9 +2332,17 @@ function onEsitoSigaroChange(){
     const forzaIngressoTxt = estraiCampoForza(pEl, 'forza_ingresso');
     const forzaCentroTxt = estraiCampoForza(pEl, 'forza_centro');
     const forzaFinaleTxt = estraiCampoForza(pEl, 'forza_finale');
+    const punteggio = punteggioEl ? parseInt(punteggioEl.textContent, 10) : null;
+    // Fonte autoritativa: l'attributo compilata="true|false" scritto da
+    // index.html sulla <scheda> (vedi schedaSoddisfaRequisitiMinimi).
+    // Fallback per file più vecchi senza l'attributo: presenza di un
+    // punteggio valido (comportamento precedente a questa correzione).
+    const compilata = schedaEl
+      ? schedaEl.getAttribute('compilata') !== 'false'
+      : (punteggio !== null && !isNaN(punteggio));
     return {
       nome: pEl.getAttribute('nome') || '—',
-      punteggio: punteggioEl ? parseInt(punteggioEl.textContent, 10) : null,
+      punteggio: (punteggio !== null && !isNaN(punteggio)) ? punteggio : null,
       commenti: commentiEl ? commentiEl.textContent : '',
       ingresso1: ingressoEl ? ingressoEl.textContent : '',
       ingresso2: centroEl ? centroEl.textContent : '',
@@ -2341,11 +2350,12 @@ function onEsitoSigaroChange(){
       forzaIngresso: forzaIngressoTxt ? (FORZA_SCALE[forzaIngressoTxt] || null) : null,
       forzaCentro: forzaCentroTxt ? (FORZA_SCALE[forzaCentroTxt] || null) : null,
       forzaFinale: forzaFinaleTxt ? (FORZA_SCALE[forzaFinaleTxt] || null) : null,
+      compilata,
     };
-  }).filter(p => p.punteggio !== null && !isNaN(p.punteggio));
+  });
 
   if(panelisti.length === 0){
-    host.innerHTML = '<div class="empty-note">Nessun punteggio valido trovato per questo sigaro.</div>';
+    host.innerHTML = '<div class="empty-note">Nessun Panelist trovato per questo sigaro nel report.</div>';
     return;
   }
 
@@ -2370,22 +2380,25 @@ function renderEsitoAnalysis(panelNumero, sigaroNumero, panelisti, host){
   _esitoPanelistiCorrenti = panelisti;
 
   const tableRows = panelisti.map(p=>`
-    <tr>
+    <tr${p.compilata ? '' : ' style="opacity:.6;"'}>
       <td data-label="Panelist">${escapeHtml(p.nome)}</td>
-      <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
-      <td data-label="Commenti">${escapeHtml(p.commenti) || '—'}</td>
-      <td data-label="Ingresso 1° terzo"><span>${forzaBadge(p.forzaIngresso)}${escapeHtml(p.ingresso1) || '—'}</span></td>
-      <td data-label="Ingresso 2° terzo"><span>${forzaBadge(p.forzaCentro)}${escapeHtml(p.ingresso2) || '—'}</span></td>
-      <td data-label="Ingresso 3° terzo"><span>${forzaBadge(p.forzaFinale)}${escapeHtml(p.ingresso3) || '—'}</span></td>
+      <td data-label="Giudizio Finale" style="font-weight:700;">${p.compilata ? escapeHtml(p.punteggio) : '<span style="color:var(--red);font-weight:600;">Non compilata</span>'}</td>
+      <td data-label="Commenti">${p.compilata ? (escapeHtml(p.commenti) || '—') : '—'}</td>
+      <td data-label="Ingresso 1° terzo"><span>${p.compilata ? forzaBadge(p.forzaIngresso)+(escapeHtml(p.ingresso1) || '—') : '—'}</span></td>
+      <td data-label="Ingresso 2° terzo"><span>${p.compilata ? forzaBadge(p.forzaCentro)+(escapeHtml(p.ingresso2) || '—') : '—'}</span></td>
+      <td data-label="Ingresso 3° terzo"><span>${p.compilata ? forzaBadge(p.forzaFinale)+(escapeHtml(p.ingresso3) || '—') : '—'}</span></td>
     </tr>
   `).join('');
 
   const calcRows = panelisti.map((p,i)=>`
-    <tr>
-      <td data-label="Panelist">${escapeHtml(p.nome)}</td>
-      <td data-label="Giudizio Finale" style="font-weight:700;">${escapeHtml(p.punteggio)}</td>
+    <tr${p.compilata ? '' : ' style="opacity:.6;"'}>
+      <td data-label="Panelist">${escapeHtml(p.nome)}${p.compilata ? '' : ' <span class="subtle" style="color:var(--red);">(scheda non compilata)</span>'}</td>
+      <td data-label="Giudizio Finale" style="font-weight:700;">${p.compilata ? escapeHtml(p.punteggio) : '—'}</td>
       <td data-label="Presenza nel calcolo" style="text-align:center;">
-        <input type="checkbox" class="esito-calc-checkbox" data-idx="${i}" checked onchange="ricalcolaEsitoPunteggio()" style="width:18px;height:18px;cursor:pointer;">
+        <input type="checkbox" class="esito-calc-checkbox" data-idx="${i}"
+          ${p.compilata ? 'checked' : ''} ${p.compilata ? '' : 'disabled'}
+          onchange="ricalcolaEsitoPunteggio()" style="width:18px;height:18px;cursor:pointer;"
+          title="${p.compilata ? '' : 'Scheda non compilata: non può essere inclusa nel calcolo'}">
       </td>
     </tr>
   `).join('');
@@ -2850,10 +2863,14 @@ async function _eseguiEsportaInWord(panelNumero, sigaroNumero){
 
   try{
     // Ri-scarica il report aggiornato da Supabase, cos\u00ec il Word riflette
-    // sempre l'ultimo stato salvato (non solo quello in memoria).
-    const { data: fileData, error: dlErr } = await sb.storage.from('panel-exports').download(`report_panel_${panelNumero}.xml`);
-    if(dlErr){ throw new Error('Impossibile scaricare il report: ' + dlErr.message); }
-    const xmlText = await fileData.text();
+    // sempre l'ultimo stato salvato (non solo quello in memoria). Signed
+    // URL + fetch no-store invece di .download(): stesso fix gi\u00e0 applicato
+    // altrove nel progetto contro i bytes stantii dopo una riscrittura.
+    const { data: signedReportData, error: signReportErr } = await sb.storage.from('panel-exports').createSignedUrl(`report_panel_${panelNumero}.xml`, 60);
+    if(signReportErr || !signedReportData?.signedUrl){ throw new Error('Impossibile generare il link al report: ' + (signReportErr ? signReportErr.message : 'URL non disponibile.')); }
+    const reportResp = await fetch(signedReportData.signedUrl, { cache: 'no-store' });
+    if(!reportResp.ok){ throw new Error('Impossibile scaricare il report: HTTP ' + reportResp.status); }
+    const xmlText = await reportResp.text();
     const freshDoc = new DOMParser().parseFromString(xmlText, 'application/xml');
     if(freshDoc.getElementsByTagName('parsererror').length > 0){
       throw new Error('Il report XML non \u00e8 valido.');
@@ -3529,9 +3546,22 @@ async function generatePanelReport(panelId){
   const erroriParsing = [];
 
   for(const row of completed){
-    const { data, error } = await sb.storage.from('panel-exports').download(row.fileName);
-    if(error){ erroriParsing.push(row.fullName + ': ' + error.message); continue; }
-    const text = await data.text();
+    // Stesso fix già applicato altrove nel progetto (vedi onEsitoPanelChange):
+    // .download() può restituire bytes stantii per lo stesso path dopo che
+    // un panelist ha ri-sottomesso (es. dopo "Riapri in Modifica"). Uso
+    // signed URL + fetch con cache:'no-store' per garantire il contenuto
+    // più recente.
+    const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(row.fileName, 60);
+    if(signErr || !signedData?.signedUrl){
+      erroriParsing.push(row.fullName + ': ' + (signErr ? signErr.message : 'link non disponibile'));
+      continue;
+    }
+    const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
+    if(!resp.ok){
+      erroriParsing.push(row.fullName + ': HTTP ' + resp.status);
+      continue;
+    }
+    const text = await resp.text();
     const doc = new DOMParser().parseFromString(text, 'application/xml');
     if(doc.getElementsByTagName('parsererror').length > 0){
       erroriParsing.push(row.fullName + ': file XML non valido');
@@ -3583,9 +3613,16 @@ async function generatePanelReport(panelId){
 }
 
 async function downloadArchiveFile(name){
-  const { data, error } = await sb.storage.from('panel-exports').download(name);
-  if(error){ showAlert('Errore nel download: ' + error.message); return; }
-  const url = URL.createObjectURL(data);
+  // Signed URL + fetch no-store invece di .download(): stesso fix già
+  // applicato altrove nel progetto contro i bytes stantii dopo una
+  // riscrittura (es. click su "Scarica Report" subito dopo aver
+  // rigenerato il report).
+  const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(name, 60);
+  if(signErr || !signedData?.signedUrl){ showAlert('Errore nel download: ' + (signErr ? signErr.message : 'URL non disponibile.')); return; }
+  const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
+  if(!resp.ok){ showAlert('Errore nel download: HTTP ' + resp.status); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name; a.style.display = 'none';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
