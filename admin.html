@@ -1209,8 +1209,8 @@ async function loadPanelsTable(){
       <td data-label="Scadenza sottomissioni">
         <div style="display:flex;flex-direction:column;gap:6px;min-width:200px;">
           <div style="display:flex;gap:6px;align-items:center;">
-            <input type="datetime-local" id="scadenza-${p.id}" value="${scadenzaLocalValue}" style="flex:1;min-width:0;">
-            <button class="btn btn-small btn-ghost" onclick="savePanelScadenza(${p.id})">Salva</button>
+            <input type="datetime-local" id="scadenza-${p.id}" value="${scadenzaLocalValue}" style="flex:1;min-width:0;" ${p.stato==='completato'?'disabled title="Riapri il panel (In corso) per modificare la scadenza"':''}>
+            <button class="btn btn-small btn-ghost" onclick="savePanelScadenza(${p.id})" ${p.stato==='completato'?'disabled':''}>Salva</button>
           </div>
           <div class="subtle" id="countdown-${p.id}" style="font-size:12px;"></div>
         </div>
@@ -1229,6 +1229,11 @@ async function loadPanelsTable(){
 
 // Salva la scadenza di sottomissione di un panel (colonna 'scadenza').
 async function savePanelScadenza(panelId){
+  const row = _panelsCache.find(p => p.id === panelId);
+  if(row && row.stato === 'completato'){
+    showAlert('Questo panel è "Completato": non è possibile impostare una scadenza di sottomissione. Se vuoi modificarla, riapri prima il panel mettendolo in stato "In corso".');
+    return;
+  }
   const input = document.getElementById('scadenza-'+panelId);
   const val = input.value; // 'YYYY-MM-DDTHH:mm' in ora locale del browser, o '' per rimuoverla
   const scadenzaIso = val ? new Date(val).toISOString() : null;
@@ -1237,7 +1242,6 @@ async function savePanelScadenza(panelId){
     showAlert('Errore nel salvataggio della scadenza: ' + error.message);
     return;
   }
-  const row = _panelsCache.find(p => p.id === panelId);
   if(row) row.scadenza = scadenzaIso;
   input.style.borderColor = '#5fbf6a';
   setTimeout(()=>{ input.style.borderColor = ''; }, 900);
