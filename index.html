@@ -1580,7 +1580,7 @@ function tasteToXml(t, panelNumero, sigaroNumero){
     }).join('\n');
     return `    <${groupName}>\n${items}\n    </${groupName}>`;
   };
-  return `  <scheda id="${xmlEsc(t.id)}">
+  return `  <scheda id="${xmlEsc(t.id)}" sigaro="${xmlEsc(sigaroNumero)}" compilata="true">
     <panel>${xmlEsc(panelNumero)}</panel>
     <data>${xmlEsc(t.data)}</data>
     <sigaro>${xmlEsc(sigaroNumero)}</sigaro>
@@ -1611,6 +1611,20 @@ ${radioXml('considerazioni_finali', RADIO_GROUPS.finali, t.finali)}
   </scheda>`;
 }
 
+// Nodo "stub" per un sigaro ASSEGNATO ma MAI compilato dal panelist: tutti
+// i campi personali sono assenti per definizione (nessuna scheda esiste),
+// ma va comunque incluso nell'export così l'admin, in "Archivio
+// Sottomissioni", può vedere esattamente quali sigari non sono stati
+// degustati, non solo se il panel è stato sottomesso o meno.
+function sigaroNonCompilatoToXml(panelNumero, sigaroNumero){
+  return `  <scheda sigaro="${xmlEsc(sigaroNumero)}" compilata="false">
+    <panel>${xmlEsc(panelNumero)}</panel>
+    <sigaro>${xmlEsc(sigaroNumero)}</sigaro>
+    <catador>${xmlEsc(currentUser.name)}</catador>
+    <stato>non_compilata</stato>
+  </scheda>`;
+}
+
 let _exportFilename = 'export.xml';
 
 function sanitizeFileNamePart(s){
@@ -1633,15 +1647,27 @@ async function exportPanel(){
     await renderPanelDetail();
     return;
   }
+  // Tutti i sigari ASSEGNATI a questo panelist per il panel — compilati o
+  // no — così l'admin può vedere in "Archivio Sottomissioni" esattamente
+  // quali sigari sono stati degustati e quali no, non solo "sottomesso sì/no".
+  const assigned = await loadMyAssignedSigari(currentPanel.numero);
+  if(!assigned || assigned.length === 0){ showAlert('Nessun sigaro assegnato in questo panel.'); return; }
+
+  // v_sigari_assegnati (usata sopra) espone solo un sottoinsieme di campi;
+  // per i sigari compilati serve il record completo della scheda per l'export XML.
   const { data, error } = await sb
     .from('schede_degustazione')
     .select('*, sigari!inner(numero_sigaro, panel_id, panels!inner(numero))')
     .eq('utente_id', currentUser.id)
     .eq('sigari.panels.numero', currentPanel.numero);
   if(error){ showAlert('Errore nel recupero delle schede: ' + error.message); return; }
-  if(!data || data.length===0){ showAlert('Nessuna scheda compilata per questo panel.'); return; }
 
-  const body = data.map(t => tasteToXml(t, currentPanel.numero, t.sigari.numero_sigaro)).join('\n');
+  const schedaPerSigaroId = new Map((data||[]).map(t => [t.sigaro_id, t]));
+  const body = assigned.map(row=>{
+    const full = schedaPerSigaroId.get(row.sigaro_id);
+    return full ? tasteToXml(full, currentPanel.numero, row.numero_sigaro)
+                : sigaroNonCompilatoToXml(currentPanel.numero, row.numero_sigaro);
+  }).join('\n');
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<schede_degustazione catador="${xmlEsc(currentUser.name)}" panel="${xmlEsc(currentPanel.numero)}" generato_il="${xmlEsc(new Date().toISOString())}">\n${body}\n</schede_degustazione>`;
 
   const namePart = sanitizeFileNamePart(currentUser.name);

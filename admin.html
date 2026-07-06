@@ -3400,9 +3400,9 @@ async function loadArchiveTable(){
       </div>
       ${reportFile ? `<div class="subtle" style="margin-top:6px;">Report generato il ${formatDateTime(reportFile.updated_at || reportFile.created_at)}</div>` : ''}
       <table class="admin-table" style="margin-top:14px;">
-        <thead><tr><th>Panelist</th><th>Stato</th><th>Azioni</th></tr></thead>
+        <thead><tr><th>Panelist</th><th>Stato</th><th>Sigari</th><th>Azioni</th></tr></thead>
         <tbody>
-          ${rows.map(r=>`
+          ${rows.map((r, idx)=>`
             <tr>
               <td data-label="Panelist">${escapeHtml(r.fullName)}</td>
               <td data-label="Stato">
@@ -3410,6 +3410,11 @@ async function loadArchiveTable(){
                   <span class="status-dot ${r.completato?'completato':'in-corso'}"></span>
                   <span class="status-label">${r.completato?'Completato':'In corso'}</span>
                 </span>
+              </td>
+              <td data-label="Sigari">
+                ${r.completato
+                  ? `<span class="subtle" id="sigari-detail-${panel.id}-${idx}">Caricamento…</span>`
+                  : '<span class="subtle">In attesa di sottomissione</span>'}
               </td>
               <td data-label="Azioni">
                 ${r.completato ? `
@@ -3425,7 +3430,58 @@ async function loadArchiveTable(){
       </table>
     `;
     host.appendChild(section);
+
+    // Popola in modo asincrono il dettaglio sigari compilati/non compilati
+    // per ciascun panelist che ha già sottomesso (richiede scaricare e
+    // fare il parse del suo file XML dall'archivio).
+    rows.forEach((r, idx)=>{
+      if(r.completato) caricaDettaglioSigariSottomessi(r.fileName, 'sigari-detail-'+panel.id+'-'+idx);
+    });
   });
+}
+
+// Scarica e analizza il file XML di sottomissione di un panelist, per
+// mostrare quali sigari assegnati ha effettivamente compilato e quali no
+// (attributo compilata="true|false" su ogni <scheda>, introdotto insieme
+// all'export completo lato index.html — i file più vecchi, senza questo
+// attributo, vengono trattati come "tutti compilati" per retrocompatibilità,
+// dato che prima contenevano solo i sigari effettivamente compilati).
+async function caricaDettaglioSigariSottomessi(fileName, elId){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  try{
+    const { data: signedData, error: signErr } = await sb.storage.from('panel-exports').createSignedUrl(fileName, 60);
+    if(signErr || !signedData?.signedUrl){ el.textContent = '—'; return; }
+    const resp = await fetch(signedData.signedUrl, { cache: 'no-store' });
+    if(!resp.ok){ el.textContent = '—'; return; }
+    const text = await resp.text();
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if(doc.getElementsByTagName('parsererror').length > 0){ el.textContent = 'XML non leggibile'; return; }
+
+    const schede = Array.from(doc.getElementsByTagName('scheda'));
+    const compilati = [];
+    const nonCompilati = [];
+    schede.forEach(s=>{
+      const sigaroEl = s.getElementsByTagName('sigaro')[0];
+      const numero = s.getAttribute('sigaro') || (sigaroEl ? sigaroEl.textContent : '') || '?';
+      const isCompilata = s.getAttribute('compilata') !== 'false';
+      (isCompilata ? compilati : nonCompilati).push(numero);
+    });
+
+    const ordina = arr => arr.sort((a,b)=>{
+      const na=parseInt(a,10), nb=parseInt(b,10);
+      if(!isNaN(na) && !isNaN(nb)) return na-nb;
+      return String(a).localeCompare(String(b));
+    });
+    ordina(compilati); ordina(nonCompilati);
+
+    const parti = [];
+    if(compilati.length) parti.push('<div style="color:#5fbf6a;">✓ Compilati: ' + compilati.map(escapeHtml).join(', ') + '</div>');
+    if(nonCompilati.length) parti.push('<div style="color:var(--red);">✗ Non compilati: ' + nonCompilati.map(escapeHtml).join(', ') + '</div>');
+    el.outerHTML = '<div id="' + elId + '">' + (parti.join('') || '<span class="subtle">Nessun sigaro nel file</span>') + '</div>';
+  }catch(e){
+    el.textContent = 'Errore: ' + e.message;
+  }
 }
 
 async function generatePanelReport(panelId){
