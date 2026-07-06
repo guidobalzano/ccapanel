@@ -1297,7 +1297,14 @@ async function savePanel(panelId){
   const sel = document.getElementById('stato-select-'+panelId);
   const stato = sel ? sel.value : null;
   if(!stato) return;
-  const { error } = await sb.from('panels').update({ stato }).eq('id', panelId);
+  const updatePayload = { stato };
+  // Impostando manualmente "Completato", la scadenza non ha più senso:
+  // la si azzera così il countdown sparisce subito, invece di restare
+  // visibile (o mostrare "Scaduto") su un panel già chiuso a mano.
+  if(stato === 'completato' && _panelScadenzaColonnaOk){
+    updatePayload.scadenza = null;
+  }
+  const { error } = await sb.from('panels').update(updatePayload).eq('id', panelId);
   if(error){ showAlert('Errore aggiornamento panel: ' + error.message); return; }
   // ricarica per aggiornare anche il conteggio sigari mostrato
   await loadPanelsTable();
