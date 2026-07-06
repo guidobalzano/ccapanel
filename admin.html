@@ -1210,7 +1210,7 @@ async function loadPanelsTable(){
         <div style="display:flex;flex-direction:column;gap:6px;min-width:200px;">
           <div style="display:flex;gap:6px;align-items:center;">
             <input type="datetime-local" id="scadenza-${p.id}" value="${scadenzaLocalValue}" style="flex:1;min-width:0;" ${p.stato==='completato'?'disabled title="Riapri il panel (In corso) per modificare la scadenza"':''}>
-            <button class="btn btn-small btn-ghost" onclick="savePanelScadenza(${p.id})" ${p.stato==='completato'?'disabled':''}>Salva</button>
+            <button class="btn btn-small btn-ghost" id="scadenza-btn-${p.id}" onclick="savePanelScadenza(${p.id})" ${p.stato==='completato'?'disabled':''}>Salva</button>
           </div>
           <div class="subtle" id="countdown-${p.id}" style="font-size:12px;"></div>
         </div>
@@ -1265,22 +1265,43 @@ async function aggiornaTuttiICountdownPanel(){
     if(!p.scadenza){ el.textContent = ''; continue; }
     const diff = new Date(p.scadenza).getTime() - now;
     if(diff <= 0){
-      el.textContent = '⏱ Scaduto';
-      el.style.color = 'var(--red)';
       if(p.stato !== 'completato' && !p._autoCompletatoInCorso){
         p._autoCompletatoInCorso = true; // evita doppi invii mentre l'update è in volo
+        el.textContent = '⏱ Scaduto — chiusura in corso…';
+        el.style.color = 'var(--red)';
         try{
-          const { error } = await sb.from('panels').update({ stato:'completato' }).eq('id', p.id);
-          if(!error){
+          // Stesso update: stato -> completato E scadenza azzerata insieme,
+          // coerente con "riaprire richiede di impostare un nuovo countdown".
+          const updatePayload = { stato:'completato' };
+          if(_panelScadenzaColonnaOk) updatePayload.scadenza = null;
+          const { error } = await sb.from('panels').update(updatePayload).eq('id', p.id);
+          if(error){
+            console.error('[Countdown Panel] errore auto-completamento panel', p.id, ':', error.message);
+            el.textContent = '⏱ Scaduto (errore chiusura automatica, riprovo al prossimo giro)';
+          }else{
             p.stato = 'completato';
+            p.scadenza = null;
+            // Aggiornamento live della riga, senza dover ricaricare la
+            // tabella: select di stato, campo/bottone scadenza disabilitati
+            // e svuotati, countdown azzerato — esattamente come se
+            // l'admin l'avesse appena chiuso a mano.
             const sel = document.getElementById('stato-select-'+p.id);
             if(sel) sel.value = 'completato';
-          }else{
-            console.error('[Countdown Panel] errore auto-completamento:', error.message);
+            const scadenzaInput = document.getElementById('scadenza-'+p.id);
+            if(scadenzaInput){ scadenzaInput.value = ''; scadenzaInput.disabled = true; scadenzaInput.title = 'Riapri il panel (In corso) per modificare la scadenza'; }
+            const scadenzaBtn = document.getElementById('scadenza-btn-'+p.id);
+            if(scadenzaBtn) scadenzaBtn.disabled = true;
+            el.textContent = '';
           }
+        }catch(err){
+          console.error('[Countdown Panel] eccezione auto-completamento panel', p.id, ':', err);
+          el.textContent = '⏱ Scaduto (errore chiusura automatica, riprovo al prossimo giro)';
         }finally{
           p._autoCompletatoInCorso = false;
         }
+      }else{
+        el.textContent = '⏱ Scaduto';
+        el.style.color = 'var(--red)';
       }
     }else{
       const totMin = Math.floor(diff/60000);
