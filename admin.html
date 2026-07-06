@@ -544,8 +544,10 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
         <button class="btn btn-primary" onclick="createPanel()">＋ Crea Panel</button>
       </div>
 
+      <div id="panelScadenzaWarning" class="hidden" style="background:rgba(181,32,44,.12);border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:3px;font-size:13px;margin:12px 0;"></div>
+
       <table class="admin-table">
-        <thead><tr><th>Panel</th><th>Stato</th><th>Sigari</th><th></th></tr></thead>
+        <thead><tr><th>Panel</th><th>Stato</th><th>Sigari</th><th>Scadenza sottomissioni</th><th></th></tr></thead>
         <tbody id="panelsTableBody"></tbody>
       </table>
 
@@ -1070,6 +1072,7 @@ function togglePasswordVisibility(inputId, btnEl){
 async function logout(){
   fermaHeartbeat();
   if(_usersTableRefreshInterval){ clearInterval(_usersTableRefreshInterval); _usersTableRefreshInterval = null; }
+  if(_panelCountdownInterval){ clearInterval(_panelCountdownInterval); _panelCountdownInterval = null; }
   // Segnala "offline" su Supabase SUBITO, prima di terminare la sessione:
   // dopo sb.auth.signOut() l'utente non è più autenticato e non potrebbe
   // più scrivere sul proprio profilo (RLS). Così lo stato Online si
@@ -1156,13 +1159,33 @@ async function loadEverything(){
   await populateAssignSelectors();
   await populateExportSelector();
   loadAiInstructions(false); // precarica in background, senza bloccare l'avvio
+  avviaCountdownPanel();
 }
 
 /* ============================================================
    PANEL & SIGARI
    ============================================================ */
+let _panelScadenzaColonnaOk = true; // false se la colonna 'scadenza' non esiste ancora sul DB
+
 async function loadPanelsTable(){
-  const { data, error } = await sb.from('panels').select('*').order('numero', {ascending:true});
+  const warning = document.getElementById('panelScadenzaWarning');
+  // Prova a leggere anche 'scadenza'; se la colonna non esiste ancora sul
+  // DB, ripiega su una select senza quel campo e mostra un avviso con
+  // l'istruzione SQL per aggiungerla (stesso pattern usato per
+  // last_seen_at e numero_rivista altrove nel progetto).
+  let { data, error } = await sb.from('panels').select('*, scadenza').order('numero', {ascending:true});
+  if(error){
+    _panelScadenzaColonnaOk = false;
+    const retry = await sb.from('panels').select('*').order('numero', {ascending:true});
+    data = retry.data; error = retry.error;
+    if(warning){
+      warning.textContent = '⚠ La colonna "scadenza" non esiste nella tabella panels: la scadenza di sottomissione non può essere impostata. Esegui in Supabase → SQL Editor: alter table public.panels add column if not exists scadenza timestamptz;';
+      warning.classList.remove('hidden');
+    }
+  }else{
+    _panelScadenzaColonnaOk = true;
+    if(warning) warning.classList.add('hidden');
+  }
   if(error){ console.error(error); return; }
   _panelsCache = data || [];
   const tbody = document.getElementById('panelsTableBody');
@@ -1170,6 +1193,8 @@ async function loadPanelsTable(){
   for(const p of _panelsCache){
     const { count } = await sb.from('sigari').select('id', {count:'exact', head:true}).eq('panel_id', p.id);
     const tr = document.createElement('tr');
+    // input datetime-local vuole 'YYYY-MM-DDTHH:mm' in ora locale del browser
+    const scadenzaLocalValue = p.scadenza ? new Date(p.scadenza).toISOString().slice(0,16) : '';
     tr.innerHTML = `
       <td data-label="Panel"><strong>Panel ${escapeHtml(p.numero)}</strong></td>
       <td data-label="Stato">
@@ -1183,6 +1208,15 @@ async function loadPanelsTable(){
         </div>
       </td>
       <td data-label="Sigari">${count||0} sigari</td>
+      <td data-label="Scadenza sottomissioni">
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:200px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="datetime-local" id="scadenza-${p.id}" value="${scadenzaLocalValue}" style="flex:1;min-width:0;">
+            <button class="btn btn-small btn-ghost" onclick="savePanelScadenza(${p.id})">Salva</button>
+          </div>
+          <div class="subtle" id="countdown-${p.id}" style="font-size:12px;"></div>
+        </div>
+      </td>
       <td data-label="Azioni">
         <div class="row-actions">
           <button class="btn btn-small btn-ghost" onclick="manageSigari(${p.id}, ${p.numero})">Gestisci sigari</button>
@@ -1191,6 +1225,73 @@ async function loadPanelsTable(){
       </td>
     `;
     tbody.appendChild(tr);
+  }
+  aggiornaTuttiICountdownPanel();
+}
+
+// Salva la scadenza di sottomissione di un panel (colonna 'scadenza').
+async function savePanelScadenza(panelId){
+  const input = document.getElementById('scadenza-'+panelId);
+  const val = input.value; // 'YYYY-MM-DDTHH:mm' in ora locale del browser, o '' per rimuoverla
+  const scadenzaIso = val ? new Date(val).toISOString() : null;
+  const { error } = await sb.from('panels').update({ scadenza: scadenzaIso }).eq('id', panelId);
+  if(error){
+    showAlert('Errore nel salvataggio della scadenza: ' + error.message);
+    return;
+  }
+  const row = _panelsCache.find(p => p.id === panelId);
+  if(row) row.scadenza = scadenzaIso;
+  input.style.borderColor = '#5fbf6a';
+  setTimeout(()=>{ input.style.borderColor = ''; }, 900);
+  aggiornaTuttiICountdownPanel();
+}
+
+// Countdown in tempo reale (gg/ore/minuti) per ogni panel con una scadenza
+// impostata. Se il tempo è scaduto e il panel non è già "completato", lo
+// porta automaticamente a "completato" su Supabase e aggiorna la UI.
+let _panelCountdownInterval = null;
+function avviaCountdownPanel(){
+  if(_panelCountdownInterval) clearInterval(_panelCountdownInterval);
+  aggiornaTuttiICountdownPanel();
+  _panelCountdownInterval = setInterval(aggiornaTuttiICountdownPanel, 15000);
+}
+async function aggiornaTuttiICountdownPanel(){
+  const now = Date.now();
+  for(const p of _panelsCache){
+    const el = document.getElementById('countdown-'+p.id);
+    if(!el) continue;
+    if(!p.scadenza){ el.textContent = ''; continue; }
+    const diff = new Date(p.scadenza).getTime() - now;
+    if(diff <= 0){
+      el.textContent = '⏱ Scaduto';
+      el.style.color = 'var(--red)';
+      if(p.stato !== 'completato' && !p._autoCompletatoInCorso){
+        p._autoCompletatoInCorso = true; // evita doppi invii mentre l'update è in volo
+        try{
+          const { error } = await sb.from('panels').update({ stato:'completato' }).eq('id', p.id);
+          if(!error){
+            p.stato = 'completato';
+            const sel = document.getElementById('stato-select-'+p.id);
+            if(sel) sel.value = 'completato';
+          }else{
+            console.error('[Countdown Panel] errore auto-completamento:', error.message);
+          }
+        }finally{
+          p._autoCompletatoInCorso = false;
+        }
+      }
+    }else{
+      const totMin = Math.floor(diff/60000);
+      const giorni = Math.floor(totMin/1440);
+      const ore = Math.floor((totMin%1440)/60);
+      const minuti = totMin%60;
+      const parti = [];
+      if(giorni>0) parti.push(giorni+'g');
+      if(giorni>0 || ore>0) parti.push(ore+'h');
+      parti.push(minuti+'m');
+      el.textContent = '⏳ ' + parti.join(' ') + ' alla chiusura';
+      el.style.color = 'var(--ash)';
+    }
   }
 }
 
