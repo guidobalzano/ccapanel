@@ -2323,7 +2323,6 @@ function onEsitoSigaroChange(){
 
   const panelistEls = Array.from(sigaroEl.getElementsByTagName('panelist'));
   const panelisti = panelistEls.map(pEl=>{
-    const schedaEl = pEl.querySelector('scheda');
     const punteggioEl = pEl.querySelector('giudizio_finale > punteggio');
     const commentiEl = pEl.querySelector('giudizio_finale > commenti');
     const ingressoEl = pEl.querySelector('descrizione_fasi > ingresso');
@@ -2333,20 +2332,25 @@ function onEsitoSigaroChange(){
     const forzaCentroTxt = estraiCampoForza(pEl, 'forza_centro');
     const forzaFinaleTxt = estraiCampoForza(pEl, 'forza_finale');
     const punteggio = punteggioEl ? parseInt(punteggioEl.textContent, 10) : null;
-    // Fonte autoritativa: l'attributo compilata="true|false" scritto da
-    // index.html sulla <scheda> (vedi schedaSoddisfaRequisitiMinimi).
-    // Fallback per file più vecchi senza l'attributo: presenza di un
-    // punteggio valido (comportamento precedente a questa correzione).
-    const compilata = schedaEl
-      ? schedaEl.getAttribute('compilata') !== 'false'
-      : (punteggio !== null && !isNaN(punteggio));
+    const commenti = commentiEl ? commentiEl.textContent : '';
+    const ingresso1 = ingressoEl ? ingressoEl.textContent : '';
+    const ingresso2 = centroEl ? centroEl.textContent : '';
+    const ingresso3 = finaleEl ? finaleEl.textContent : '';
+    // NON ci si fida dell'attributo compilata="true|false" dichiarato
+    // nell'XML: nei file generati prima della validazione sui campi
+    // minimi può essere stato scritto "true" per errore (bozze
+    // incomplete marcate come complete). Si rivalida sempre sui campi
+    // REALMENTE presenti nella scheda — stessa regola di
+    // schedaSoddisfaRequisitiMinimi in index.html/admin.html, così una
+    // dichiarazione stantia non può mai far apparire compilato qualcosa
+    // che in realtà non lo è.
+    const nonVuoto = v => v !== null && v !== undefined && String(v).trim() !== '';
+    const compilata = nonVuoto(punteggio) && nonVuoto(commenti) &&
+                       nonVuoto(ingresso1) && nonVuoto(ingresso2) && nonVuoto(ingresso3);
     return {
       nome: pEl.getAttribute('nome') || '—',
       punteggio: (punteggio !== null && !isNaN(punteggio)) ? punteggio : null,
-      commenti: commentiEl ? commentiEl.textContent : '',
-      ingresso1: ingressoEl ? ingressoEl.textContent : '',
-      ingresso2: centroEl ? centroEl.textContent : '',
-      ingresso3: finaleEl ? finaleEl.textContent : '',
+      commenti, ingresso1, ingresso2, ingresso3,
       forzaIngresso: forzaIngressoTxt ? (FORZA_SCALE[forzaIngressoTxt] || null) : null,
       forzaCentro: forzaCentroTxt ? (FORZA_SCALE[forzaCentroTxt] || null) : null,
       forzaFinale: forzaFinaleTxt ? (FORZA_SCALE[forzaFinaleTxt] || null) : null,
@@ -3475,11 +3479,12 @@ async function loadArchiveTable(){
 }
 
 // Scarica e analizza il file XML di sottomissione di un panelist, per
-// mostrare quali sigari assegnati ha effettivamente compilato e quali no
-// (attributo compilata="true|false" su ogni <scheda>, introdotto insieme
-// all'export completo lato index.html — i file più vecchi, senza questo
-// attributo, vengono trattati come "tutti compilati" per retrocompatibilità,
-// dato che prima contenevano solo i sigari effettivamente compilati).
+// mostrare quali sigari assegnati ha effettivamente compilato e quali no.
+// La classificazione si basa SEMPRE sui campi realmente presenti nella
+// scheda (punteggio, commenti, descrizione fasi), MAI sull'attributo
+// compilata="true|false" scritto nell'XML: quell'attributo può essere
+// stantio/sbagliato nei file generati prima che questa validazione
+// esistesse (bozze incomplete marcate erroneamente come complete).
 async function caricaDettaglioSigariSottomessi(fileName, elId){
   const el = document.getElementById(elId);
   if(!el) return;
@@ -3495,10 +3500,17 @@ async function caricaDettaglioSigariSottomessi(fileName, elId){
     const schede = Array.from(doc.getElementsByTagName('scheda'));
     const compilati = [];
     const nonCompilati = [];
+    // Stessa regola di onEsitoSigaroChange: NON ci si fida dell'attributo
+    // compilata="true|false" dichiarato nell'XML (può essere stantio nei
+    // file generati prima della validazione sui campi minimi), si
+    // rivalida sempre sui campi realmente presenti nella scheda.
+    const nonVuoto = v => v !== null && v !== undefined && String(v).trim() !== '';
     schede.forEach(s=>{
       const sigaroEl = s.getElementsByTagName('sigaro')[0];
       const numero = s.getAttribute('sigaro') || (sigaroEl ? sigaroEl.textContent : '') || '?';
-      const isCompilata = s.getAttribute('compilata') !== 'false';
+      const get = sel => { const el2 = s.querySelector(sel); return el2 ? el2.textContent : ''; };
+      const isCompilata = nonVuoto(get('giudizio_finale > punteggio')) && nonVuoto(get('giudizio_finale > commenti')) &&
+                          nonVuoto(get('descrizione_fasi > ingresso')) && nonVuoto(get('descrizione_fasi > centro')) && nonVuoto(get('descrizione_fasi > finale'));
       (isCompilata ? compilati : nonCompilati).push(numero);
     });
 
