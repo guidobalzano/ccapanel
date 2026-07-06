@@ -3422,7 +3422,14 @@ async function loadArchiveTable(){
       const fileName = `panel_${panel.numero}_${sanitizeFileNamePart(fullName)}.xml`;
       const file = fileMap[fileName];
       const completato = !!file;
-      return { fullName, fileName, completato, file };
+      // Il panel è chiuso (scaduto per timer, o chiuso a mano dall'admin)
+      // ma questo panelist non ha mai sottomesso: non può più farlo (vedi
+      // il blocco lato index.html), quindi va comunque considerato
+      // "Completato" ai fini dello stato — altrimenti il panel resterebbe
+      // per sempre bloccato sotto al 100% e "Genera Report Unico" non
+      // includerebbe mai i suoi sigari.
+      const scaduto = !completato && panel.stato === 'completato';
+      return { fullName, fileName, completato, scaduto, file };
     }).sort((a,b)=> a.fullName.localeCompare(b.fullName));
 
     window._archiveRowsByPanel[panel.id] = { rows, numero: panel.numero };
@@ -3436,7 +3443,7 @@ async function loadArchiveTable(){
     section.style.marginBottom = '22px';
     section.style.cursor = 'default';
 
-    const doneCount = rows.filter(r=>r.completato).length;
+    const doneCount = rows.filter(r=>r.completato || r.scaduto).length;
     section.innerHTML = `
       <div class="cig-no">Panel ${escapeHtml(panel.numero)}</div>
       <div class="cig-date">${doneCount} / ${rows.length} sottomissioni completate</div>
@@ -3455,15 +3462,15 @@ async function loadArchiveTable(){
             <tr>
               <td data-label="Panelist">${escapeHtml(r.fullName)}</td>
               <td data-label="Stato">
-                <span class="panel-status ${r.completato?'completato':'in-corso'}" style="position:static;display:inline-flex;">
-                  <span class="status-dot ${r.completato?'completato':'in-corso'}"></span>
-                  <span class="status-label">${r.completato?'Completato':'In corso'}</span>
+                <span class="panel-status ${(r.completato||r.scaduto)?'completato':'in-corso'}" style="position:static;display:inline-flex;">
+                  <span class="status-dot ${(r.completato||r.scaduto)?'completato':'in-corso'}"></span>
+                  <span class="status-label">${(r.completato||r.scaduto)?'Completato':'In corso'}</span>
                 </span>
               </td>
               <td data-label="Sigari">
                 ${r.completato
                   ? `<span class="subtle" id="sigari-detail-${panel.id}-${idx}">Caricamento…</span>`
-                  : '<span class="subtle">In attesa di sottomissione</span>'}
+                  : (r.scaduto ? '<span class="subtle" style="color:var(--red);">Tempo scaduto</span>' : '<span class="subtle">In attesa di sottomissione</span>')}
               </td>
               <td data-label="Azioni">
                 ${r.completato ? `
@@ -3471,7 +3478,7 @@ async function loadArchiveTable(){
                     <button class="btn btn-small btn-ghost" data-filename="${escapeHtml(r.fileName)}" onclick="riapriPanelInModifica(this.dataset.filename)">Riapri in Modifica</button>
                     <button class="btn btn-small btn-danger" data-filename="${escapeHtml(r.fileName)}" onclick="deleteArchiveFile(this.dataset.filename)">Elimina</button>
                   </div>
-                ` : '<span class="subtle">In attesa di sottomissione</span>'}
+                ` : (r.scaduto ? '<span class="subtle">In revisione admin</span>' : '<span class="subtle">In attesa di sottomissione</span>')}
               </td>
             </tr>
           `).join('')}
