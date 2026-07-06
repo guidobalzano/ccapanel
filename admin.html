@@ -941,7 +941,6 @@ function calcolaDimensioniFotoContain(imgW, imgH){
 }
 
 const PANEL_STATUS_META = {
-  da_avviare: {label:'Da Avviare', cls:'da-avviare'},
   in_corso:   {label:'In corso',   cls:'in-corso'},
   completato: {label:'Completato', cls:'completato'},
 };
@@ -1200,7 +1199,6 @@ async function loadPanelsTable(){
       <td data-label="Stato">
         <div class="stato-row">
           <select id="stato-select-${p.id}" data-panel-id="${p.id}">
-            <option value="da_avviare" ${p.stato==='da_avviare'?'selected':''}>Da Avviare</option>
             <option value="in_corso" ${p.stato==='in_corso'?'selected':''}>In corso</option>
             <option value="completato" ${p.stato==='completato'?'selected':''}>Completato</option>
           </select>
@@ -1309,7 +1307,7 @@ async function savePanel(panelId){
 async function createPanel(){
   const numero = parseInt(document.getElementById('np-numero').value, 10);
   if(!numero || numero <= 0){ showAlert('Inserisci un numero di panel valido: deve essere un intero positivo (maggiore di zero).'); return; }
-  const { error } = await sb.from('panels').insert({ numero, stato:'da_avviare' });
+  const { error } = await sb.from('panels').insert({ numero, stato:'in_corso' });
   if(error){ showAlert('Errore: ' + error.message); return; }
   document.getElementById('np-numero').value = '';
   await loadPanelsTable();

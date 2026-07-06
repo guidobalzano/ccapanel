@@ -703,7 +703,6 @@ const TRIPLE_GROUPS = {
 // admin.html) — vedi window.SCORE_BANDS.
 
 const PANEL_STATUS_META = {
-  da_avviare: {label:'Da Avviare', cls:'da-avviare'},
   in_corso:   {label:'In corso',   cls:'in-corso'},
   completato: {label:'Completato', cls:'completato'},
 };
@@ -893,6 +892,7 @@ function togglePasswordVisibility(inputId, btnEl){
 
 async function logout(){
   fermaHeartbeat();
+  if(_panelCountdownIntervalPanelist){ clearInterval(_panelCountdownIntervalPanelist); _panelCountdownIntervalPanelist = null; }
   // Segnala "offline" su Supabase SUBITO, prima di terminare la sessione:
   // dopo sb.auth.signOut() l'utente non è più autenticato e non potrebbe
   // più scrivere sul proprio profilo (RLS). Così l'admin vede lo stato
@@ -1020,6 +1020,7 @@ function showView(id){
 async function backToDashboard(){
   showView('panelListView');
   await loadPanels();
+  avviaCountdownPanelPanelist();
 }
 
 /* ============================================================
@@ -1052,11 +1053,10 @@ function renderPanelList(){
   const host = document.getElementById('panelCardsHost');
   host.innerHTML = '';
   _panelsCache.forEach(panel=>{
-    const meta = PANEL_STATUS_META[panel.stato] || PANEL_STATUS_META.da_avviare;
-    const explorable = panel.stato !== 'completato';
+    const meta = PANEL_STATUS_META[panel.stato] || PANEL_STATUS_META.in_corso;
     const card = document.createElement('div');
-    card.className = 'card' + (explorable ? '' : ' panel-disabled');
-    card.style.cursor = explorable ? 'pointer' : 'default';
+    card.className = 'card';
+    card.style.cursor = 'pointer';
     card.innerHTML = `
       <div class="panel-status ${meta.cls}">
         <span class="status-dot ${meta.cls}"></span>
@@ -1065,17 +1065,14 @@ function renderPanelList(){
       <div class="cig-no">Panel ${escapeHtml(panel.numero)}</div>
       <div class="cig-date">Caricamento sigari…</div>
       <div class="meta"></div>
+      <div class="subtle" id="countdown-panelist-${panel.id}"></div>
       <div class="card-actions">
-        ${explorable
-          ? `<button class="btn btn-small btn-ghost" data-act="open">Apri Panel</button>`
-          : `<button class="btn btn-small btn-ghost" disabled style="opacity:.5;cursor:not-allowed;">Non disponibile</button>`}
+        <button class="btn btn-small btn-ghost" data-act="open">${panel.stato==='completato' ? 'Consulta Panel' : 'Apri Panel'}</button>
       </div>
     `;
-    if(explorable){
-      const open = ()=>openPanel(panel);
-      card.querySelector('[data-act="open"]').onclick = (e)=>{ e.stopPropagation(); open(); };
-      card.onclick = open;
-    }
+    const open = ()=>openPanel(panel);
+    card.querySelector('[data-act="open"]').onclick = (e)=>{ e.stopPropagation(); open(); };
+    card.onclick = open;
     host.appendChild(card);
 
     // popola conteggio sigari assegnati in modo asincrono
@@ -1087,10 +1084,44 @@ function renderPanelList(){
       metaEl.textContent = doneCount + ' / ' + list.length + ' degustazioni completate';
     });
   });
+  aggiornaTuttiICountdownPanelPanelist();
+}
+
+// Countdown in tempo reale (gg/ore/minuti) alla chiusura, mostrato solo sui
+// panel "in corso" con una scadenza impostata dall'admin. Sola lettura: qui
+// non si tocca mai lo stato del panel, quello lo gestisce admin.html.
+let _panelCountdownIntervalPanelist = null;
+function avviaCountdownPanelPanelist(){
+  if(_panelCountdownIntervalPanelist) clearInterval(_panelCountdownIntervalPanelist);
+  aggiornaTuttiICountdownPanelPanelist();
+  _panelCountdownIntervalPanelist = setInterval(aggiornaTuttiICountdownPanelPanelist, 15000);
+}
+function aggiornaTuttiICountdownPanelPanelist(){
+  const now = Date.now();
+  for(const p of _panelsCache){
+    const el = document.getElementById('countdown-panelist-'+p.id);
+    if(!el) continue;
+    if(p.stato !== 'in_corso' || !p.scadenza){ el.textContent = ''; continue; }
+    const diff = new Date(p.scadenza).getTime() - now;
+    if(diff <= 0){
+      el.textContent = '⏱ Scaduto';
+      el.style.color = 'var(--red)';
+    }else{
+      const totMin = Math.floor(diff/60000);
+      const giorni = Math.floor(totMin/1440);
+      const ore = Math.floor((totMin%1440)/60);
+      const minuti = totMin%60;
+      const parti = [];
+      if(giorni>0) parti.push(giorni+'g');
+      if(giorni>0 || ore>0) parti.push(ore+'h');
+      parti.push(minuti+'m');
+      el.textContent = '⏳ ' + parti.join(' ') + ' alla chiusura';
+      el.style.color = 'var(--ash)';
+    }
+  }
 }
 
 async function openPanel(panel){
-  if(panel.stato === 'completato'){ return; }
   currentPanel = panel;
   document.getElementById('panelDetailTitle').textContent = 'Panel ' + panel.numero;
   await renderPanelDetail();
@@ -1103,6 +1134,7 @@ async function backToPanelList(){
 }
 
 let _currentPanelSubmitted = false;
+let _currentPanelClosed = false; // true se il panel è "completato" (chiuso dall'admin o per scadenza), indipendentemente dalla sottomissione personale
 
 async function isPanelSubmitted(panelNumero){
   const fileName = `panel_${panelNumero}_${sanitizeFileNamePart(currentUser.name)}.xml`;
@@ -1119,11 +1151,21 @@ async function renderPanelDetail(){
   host.innerHTML = '<div class="empty-note">Caricamento sigari…</div>';
 
   _currentPanelSubmitted = await isPanelSubmitted(currentPanel.numero);
+  _currentPanelClosed = currentPanel.stato === 'completato';
+  // "Bloccato" = non si può più né compilare/modificare né sottomettere.
+  // La consultazione (apertura in sola lettura delle schede già compilate)
+  // resta SEMPRE permessa, indipendentemente da questo flag.
+  const locked = _currentPanelSubmitted || _currentPanelClosed;
 
   const submitBtn = document.getElementById('submitPanelBtn');
   const submittedNote = document.getElementById('panelSubmittedNote');
-  submitBtn.classList.toggle('hidden', _currentPanelSubmitted);
-  submittedNote.classList.toggle('hidden', !_currentPanelSubmitted);
+  submitBtn.classList.toggle('hidden', locked);
+  submittedNote.classList.toggle('hidden', !locked);
+  if(locked){
+    submittedNote.textContent = _currentPanelSubmitted
+      ? '✓ Panel già sottomesso — le schede sono ora di sola lettura.'
+      : '🔒 Panel chiuso dall\'admin — le schede non ancora sottomesse restano di sola lettura e non sono più modificabili.';
+  }
 
   const list = await loadMyAssignedSigari(currentPanel.numero);
   _myAssignedCache = list;
@@ -1138,10 +1180,12 @@ async function renderPanelDetail(){
 
     let actionsHtml;
     if(existing){
+      // La visualizzazione ("Apri scheda") resta sempre disponibile: solo
+      // la modifica viene bloccata quando locked.
       actionsHtml = `<button class="btn btn-small btn-ghost" data-act="view">Apri scheda</button>` +
-        (_currentPanelSubmitted ? '' : `<button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>`);
-    } else if(_currentPanelSubmitted){
-      actionsHtml = `<span class="subtle">Panel già sottomesso</span>`;
+        (locked ? '' : `<button class="btn btn-small btn-ghost" data-act="edit">Modifica</button>`);
+    } else if(locked){
+      actionsHtml = `<span class="subtle">${_currentPanelSubmitted ? 'Panel già sottomesso' : 'Panel chiuso: non degustato'}</span>`;
     } else {
       actionsHtml = `<button class="btn btn-small btn-primary" data-act="new">Inizia degustazione</button>`;
     }
@@ -1150,7 +1194,7 @@ async function renderPanelDetail(){
       <div class="cig-no">Sigaro n. ${escapeHtml(row.numero_sigaro)}</div>
       <div class="cig-date">${existing ? 'Degustato il ' + formatDate(row.data) : 'Da degustare'}</div>
       <div class="score">${existing && row.punteggio ? row.punteggio : ''}</div>
-      <div class="meta">${existing ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento') : (_currentPanelSubmitted ? 'Panel già sottomesso' : 'Clicca per avviare la scheda di degustazione')}</div>
+      <div class="meta">${existing ? (escapeHtml((row.commenti||'').slice(0,90)) || 'Nessun commento') : (locked ? (_currentPanelSubmitted ? 'Panel già sottomesso' : 'Panel chiuso dall\'admin') : 'Clicca per avviare la scheda di degustazione')}</div>
       <div class="card-actions">${actionsHtml}</div>
     `;
     if(existing){
@@ -1158,7 +1202,7 @@ async function renderPanelDetail(){
       const editBtn = card.querySelector('[data-act="edit"]');
       if(editBtn){ editBtn.onclick = (e)=>{ e.stopPropagation(); formOrigin='panelDetail'; openEdit(row.scheda_id, row.sigaro_id); }; }
       card.onclick = ()=>{ detailOrigin='panelDetail'; openDetail(row.scheda_id); };
-    } else if(!_currentPanelSubmitted){
+    } else if(!locked){
       card.querySelector('[data-act="new"]').onclick = (e)=>{ e.stopPropagation(); newTastingForCigar(row); };
       card.onclick = ()=>newTastingForCigar(row);
     } else {
@@ -1170,6 +1214,7 @@ async function renderPanelDetail(){
 
 function newTastingForCigar(row){
   if(_currentPanelSubmitted){ showAlert('Questo panel è già stato sottomesso: non è più possibile avviare nuove degustazioni.'); return; }
+  if(_currentPanelClosed){ showAlert('Questo panel è stato chiuso dall\'admin: non è più possibile avviare nuove degustazioni.'); return; }
   currentEditId = null;
   formOrigin = 'panelDetail';
   resetForm();
@@ -1376,10 +1421,17 @@ function deleteCurrentFromDetail(){
    MODIFICA
    ============================================================ */
 async function openEdit(id, sigaroId){
-  const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero))').eq('id', id).single();
+  const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero, stato))').eq('id', id).single();
   if(error || !t){ showAlert('Scheda non trovata.'); return; }
 
   const panelNum = t.sigari && t.sigari.panels ? t.sigari.panels.numero : null;
+  const panelStato = t.sigari && t.sigari.panels ? t.sigari.panels.stato : null;
+  if(panelStato === 'completato'){
+    showAlert('Questo panel è stato chiuso dall\'admin: la scheda è ora di sola lettura.');
+    detailOrigin = formOrigin;
+    openDetail(id);
+    return;
+  }
   if(panelNum){
     const submitted = await isPanelSubmitted(panelNum);
     if(submitted){
@@ -1571,6 +1623,16 @@ function sanitizeFileNamePart(s){
 
 async function exportPanel(){
   if(!currentPanel){ return; }
+  // Controllo sullo stato FRESCO dal DB (non sulla cache locale, che
+  // potrebbe essere superata se il panel si è appena chiuso — per
+  // scadenza del countdown lato admin — mentre questa pagina era aperta).
+  const { data: freshPanel, error: freshErr } = await sb.from('panels').select('stato').eq('id', currentPanel.id).single();
+  if(!freshErr && freshPanel && freshPanel.stato === 'completato'){
+    currentPanel.stato = 'completato';
+    showAlert('Questo panel è stato chiuso dall\'admin: non è più possibile sottomettere schede.');
+    await renderPanelDetail();
+    return;
+  }
   const { data, error } = await sb
     .from('schede_degustazione')
     .select('*, sigari!inner(numero_sigaro, panel_id, panels!inner(numero))')
