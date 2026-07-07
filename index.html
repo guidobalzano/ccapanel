@@ -494,7 +494,14 @@ footer.foot{
         <div class="block">
           <div class="block-title cap">Considerazioni Finali</div>
           <div class="meta-row" style="margin-top:16px;">
-            <div class="field"><label>Durata fumata (minuti)</label><input type="number" id="f-durata" placeholder="es. 55"></div>
+            <div class="field">
+              <label>Durata fumata (minuti)</label>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="number" id="f-durata" placeholder="es. 55" style="flex:1;min-width:0;">
+                <button type="button" class="btn btn-small btn-ghost" id="btnAvviaTimer" onclick="avviaDurataTimer()" title="Avvia il timer della fumata">▶ Avvia</button>
+                <button type="button" class="btn btn-small btn-ghost" id="btnStopTimer" onclick="stopDurataTimer()" title="Ferma il timer e congela la durata" disabled>⏹ Stop</button>
+              </div>
+            </div>
           </div>
           <div id="grp-finali" style="margin-top:6px;"></div>
           <div class="textfield">
@@ -543,6 +550,7 @@ footer.foot{
             <button class="btn btn-primary" onclick="saveTasting()">Salva Scheda</button>
           </div>
         </div>
+        <div id="autosaveStatus" class="subtle" style="margin-top:10px;text-align:right;"></div>
       </div>
     </div>
 
@@ -716,6 +724,8 @@ const PANEL_STATUS_META = {
    ============================================================ */
 let currentUser = null;     // {id, username, full_name, role}
 let currentEditId = null;   // id riga schede_degustazione in edit
+let _autosaveInterval = null;
+let _autosaveInCorso = false; // evita salvataggi sovrapposti se uno impiega più dei 15s tra un giro e l'altro
 let currentDetailId = null;
 let currentPanel = null;    // {id, numero, stato}
 let formOrigin = 'panelList';
@@ -896,6 +906,8 @@ function togglePasswordVisibility(inputId, btnEl){
 
 async function logout(){
   fermaHeartbeat();
+  fermaAutosaveScheda();
+  resetDurataTimerSenzaSalvare();
   if(_panelCountdownIntervalPanelist){ clearInterval(_panelCountdownIntervalPanelist); _panelCountdownIntervalPanelist = null; }
   // Segnala "offline" su Supabase SUBITO, prima di terminare la sessione:
   // dopo sb.auth.signOut() l'utente non è più autenticato e non potrebbe
@@ -1394,9 +1406,12 @@ function newTastingForCigar(row){
   document.getElementById('formView').dataset.sigaroId = row.sigaro_id;
   showView('formView');
   autoGrowAllTextareas();
+  avviaAutosaveScheda();
 }
 
 function cancelForm(){
+  fermaAutosaveScheda();
+  resetDurataTimerSenzaSalvare();
   if(formOrigin === 'panelDetail' && currentPanel){
     renderPanelDetail();
     showView('panelDetailView');
@@ -1409,6 +1424,7 @@ function cancelForm(){
    FORM RESET / CAMPI
    ============================================================ */
 function resetForm(){
+  resetDurataTimerSenzaSalvare();
   document.getElementById('f-panel').value = '';
   document.getElementById('f-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('f-sigaro').value = '';
@@ -1486,27 +1502,91 @@ function fillTripleGroup(defs, data){
 /* ============================================================
    SALVATAGGIO SCHEDA (Supabase)
    ============================================================ */
-async function saveTasting(){
-  const sigaro = document.getElementById('f-sigaro').value.trim();
-  if(!sigaro){ showAlert('Inserisci il numero del sigaro.'); return; }
+// Costruisce il payload della scheda dai campi del form. Condivisa tra
+// il salvataggio esplicito (saveTasting) e l'autosave silenzioso, così
+// restano sempre allineati — nessuna duplicazione da tenere sincronizzata.
+/* ============================================================
+   TIMER DURATA FUMATA
+   Se il timer non è avviato, il campo "Durata fumata" resta un normale
+   numero editabile a mano. Avviandolo, il campo mostra il tempo che
+   avanza (HH:MM) e diventa di sola lettura finché non si preme Stop, che
+   congela il valore come minuti totali interi. Se ci si dimentica di
+   fermarlo, si ferma da solo a 4 ore (tempo massimo).
+   ============================================================ */
+let _durataTimerInterval = null;
+let _durataTimerStartMs = null;
+const DURATA_TIMER_MAX_SECONDI = 4 * 60 * 60; // 4 ore
 
-  let sigaroId = document.getElementById('formView').dataset.sigaroId;
-  if(!sigaroId){
-    // scheda aperta dall'elenco generale senza contesto panel/sigaro diretto:
-    // proviamo a risolvere il sigaro_id dal numero + panel indicato
-    const panelNum = document.getElementById('f-panel').value.trim();
-    const { data: panelRow } = await sb.from('panels').select('id').eq('numero', panelNum).maybeSingle();
-    if(panelRow){
-      const { data: sigaroRow } = await sb.from('sigari').select('id').eq('panel_id', panelRow.id).eq('numero_sigaro', sigaro).maybeSingle();
-      if(sigaroRow) sigaroId = sigaroRow.id;
-    }
-  }
-  if(!sigaroId){
-    showAlert('Non è stato possibile identificare il sigaro nel database. Avvia la degustazione da un Panel.');
+function avviaDurataTimer(){
+  if(_durataTimerInterval) return; // già avviato, non fare nulla
+  _durataTimerStartMs = Date.now();
+  const input = document.getElementById('f-durata');
+  input.type = 'text';
+  input.readOnly = true;
+  document.getElementById('btnAvviaTimer').disabled = true;
+  document.getElementById('btnStopTimer').disabled = false;
+  aggiornaDurataTimerDisplay();
+  _durataTimerInterval = setInterval(aggiornaDurataTimerDisplay, 1000);
+}
+
+function aggiornaDurataTimerDisplay(){
+  const input = document.getElementById('f-durata');
+  if(!input || !_durataTimerStartMs) return;
+  const secondiTrascorsi = Math.floor((Date.now() - _durataTimerStartMs) / 1000);
+  if(secondiTrascorsi >= DURATA_TIMER_MAX_SECONDI){
+    stopDurataTimer(true);
     return;
   }
+  const ore = Math.floor(secondiTrascorsi / 3600);
+  const minuti = Math.floor((secondiTrascorsi % 3600) / 60);
+  input.value = String(ore).padStart(2,'0') + ':' + String(minuti).padStart(2,'0');
+}
 
-  const payload = {
+function stopDurataTimer(autoStopMax){
+  if(!_durataTimerInterval && !_durataTimerStartMs) return; // niente da fermare
+  if(_durataTimerInterval){ clearInterval(_durataTimerInterval); _durataTimerInterval = null; }
+  const minutiTotali = leggiDurataMinutiCorrenti();
+  _durataTimerStartMs = null;
+  const input = document.getElementById('f-durata');
+  input.type = 'number';
+  input.readOnly = false;
+  input.value = minutiTotali != null ? minutiTotali : '';
+  document.getElementById('btnAvviaTimer').disabled = false;
+  document.getElementById('btnStopTimer').disabled = true;
+  if(autoStopMax){
+    showAlert('Il timer della durata fumata è stato fermato automaticamente al limite massimo di 4 ore.');
+  }
+}
+
+// Reset "silenzioso" del timer, senza toccare il valore del campo: usato
+// quando si cambia scheda (nuova degustazione o modifica di un'altra),
+// per non lasciare acceso il timer di una scheda precedente.
+function resetDurataTimerSenzaSalvare(){
+  if(_durataTimerInterval){ clearInterval(_durataTimerInterval); _durataTimerInterval = null; }
+  _durataTimerStartMs = null;
+  const input = document.getElementById('f-durata');
+  if(input){ input.type = 'number'; input.readOnly = false; }
+  const btnA = document.getElementById('btnAvviaTimer');
+  const btnS = document.getElementById('btnStopTimer');
+  if(btnA) btnA.disabled = false;
+  if(btnS) btnS.disabled = true;
+}
+
+// Minuti "correnti" della durata: se il timer è in esecuzione, calcolati
+// dal tempo trascorso (non dal testo HH:MM visualizzato nel campo, che
+// non è un numero valido da fare il parse); altrimenti il valore
+// normale digitato a mano nel campo.
+function leggiDurataMinutiCorrenti(){
+  if(_durataTimerStartMs){
+    const secondiTrascorsi = Math.floor((Date.now() - _durataTimerStartMs) / 1000);
+    return Math.min(Math.round(secondiTrascorsi / 60), 240);
+  }
+  const v = document.getElementById('f-durata').value;
+  return v ? parseInt(v, 10) : null;
+}
+
+function costruisciPayloadScheda(sigaroId){
+  return {
     sigaro_id: sigaroId,
     utente_id: currentUser.id,
     data: document.getElementById('f-data').value || null,
@@ -1520,7 +1600,7 @@ async function saveTasting(){
     forza: collectRadioGroup(RADIO_GROUPS.forza),
     organo: collectRadioGroup(RADIO_GROUPS.organo),
     finali: collectRadioGroup(RADIO_GROUPS.finali),
-    durata: document.getElementById('f-durata').value ? parseInt(document.getElementById('f-durata').value,10) : null,
+    durata: leggiDurataMinutiCorrenti(),
     abbinamento: document.getElementById('f-abbinamento').value,
     punteggio: document.getElementById('f-punteggio').value ? parseInt(document.getElementById('f-punteggio').value,10) : null,
     commenti: document.getElementById('f-commenti').value,
@@ -1528,6 +1608,84 @@ async function saveTasting(){
     desc_centro: document.getElementById('f-desc-centro').value,
     desc_finale: document.getElementById('f-desc-finale').value,
   };
+}
+
+// Risolve il sigaro_id della scheda attualmente aperta nel form, con lo
+// stesso fallback già usato in saveTasting per le schede aperte senza
+// contesto panel/sigaro diretto.
+async function risolviSigaroIdForm(){
+  let sigaroId = document.getElementById('formView').dataset.sigaroId;
+  if(sigaroId) return sigaroId;
+  const sigaro = document.getElementById('f-sigaro').value.trim();
+  const panelNum = document.getElementById('f-panel').value.trim();
+  if(!sigaro || !panelNum) return null;
+  const { data: panelRow } = await sb.from('panels').select('id').eq('numero', panelNum).maybeSingle();
+  if(!panelRow) return null;
+  const { data: sigaroRow } = await sb.from('sigari').select('id').eq('panel_id', panelRow.id).eq('numero_sigaro', sigaro).maybeSingle();
+  return sigaroRow ? sigaroRow.id : null;
+}
+
+/* ============================================================
+   AUTOSAVE — evita perdite di lavoro in caso di chiusura
+   accidentale del browser mentre si compila la scheda.
+   ============================================================ */
+function avviaAutosaveScheda(){
+  fermaAutosaveScheda(); // evita interval doppi se già attivo
+  const status = document.getElementById('autosaveStatus');
+  if(status) status.textContent = '💾 Salvataggio automatico attivo';
+  _autosaveInterval = setInterval(autosalvaSchedaSilenziosa, 15000);
+}
+
+function fermaAutosaveScheda(){
+  if(_autosaveInterval){ clearInterval(_autosaveInterval); _autosaveInterval = null; }
+  const status = document.getElementById('autosaveStatus');
+  if(status) status.textContent = '';
+}
+
+async function autosalvaSchedaSilenziosa(){
+  if(_autosaveInCorso) return; // evita sovrapposizioni se un giro precedente è ancora in corso
+  const status = document.getElementById('autosaveStatus');
+  const sigaroId = await risolviSigaroIdForm();
+  if(!sigaroId) return; // niente da salvare ancora (form appena aperto/resettato): salta silenziosamente, nessun errore mostrato
+
+  _autosaveInCorso = true;
+  try{
+    const payload = costruisciPayloadScheda(sigaroId);
+    let data, error;
+    if(currentEditId){
+      ({ data, error } = await sb.from('schede_degustazione').update(payload).eq('id', currentEditId).select('id').single());
+    } else {
+      ({ data, error } = await sb.from('schede_degustazione').upsert(payload, { onConflict: 'sigaro_id,utente_id' }).select('id').single());
+    }
+    if(error){
+      console.error('[Autosave] errore:', error.message);
+      if(status){ status.textContent = '⚠ Salvataggio automatico non riuscito, riprovo tra poco'; status.style.color = 'var(--red)'; }
+      return;
+    }
+    if(!currentEditId && data){ currentEditId = data.id; }
+    if(status){
+      const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      status.textContent = '💾 Salvato automaticamente alle ' + ora;
+      status.style.color = '';
+    }
+  }catch(err){
+    console.error('[Autosave] eccezione:', err);
+  }finally{
+    _autosaveInCorso = false;
+  }
+}
+
+async function saveTasting(){
+  const sigaro = document.getElementById('f-sigaro').value.trim();
+  if(!sigaro){ showAlert('Inserisci il numero del sigaro.'); return; }
+
+  const sigaroId = await risolviSigaroIdForm();
+  if(!sigaroId){
+    showAlert('Non è stato possibile identificare il sigaro nel database. Avvia la degustazione da un Panel.');
+    return;
+  }
+
+  const payload = costruisciPayloadScheda(sigaroId);
 
   let error;
   if(currentEditId){
@@ -1537,6 +1695,8 @@ async function saveTasting(){
   }
   if(error){ showAlert('Errore nel salvataggio: ' + error.message); return; }
 
+  fermaAutosaveScheda();
+  resetDurataTimerSenzaSalvare();
   currentEditId = null;
   if(formOrigin === 'panelDetail' && currentPanel){
     await renderPanelDetail();
@@ -1590,6 +1750,7 @@ function deleteCurrentFromDetail(){
    MODIFICA
    ============================================================ */
 async function openEdit(id, sigaroId){
+  resetDurataTimerSenzaSalvare();
   const { data: t, error } = await sb.from('schede_degustazione').select('*, sigari(numero_sigaro, panels(numero, stato))').eq('id', id).single();
   if(error || !t){ showAlert('Scheda non trovata.'); return; }
 
@@ -1637,6 +1798,7 @@ async function openEdit(id, sigaroId){
   updateScoreLabel();
   showView('formView');
   autoGrowAllTextareas();
+  avviaAutosaveScheda();
 }
 
 /* ============================================================
