@@ -408,7 +408,7 @@ footer.foot{
       <div id="panelCardsHost" class="grid-cards"></div>
 
       <div class="section-title" style="margin-top:50px;"><h2>Le tue statistiche</h2><div class="rule"></div></div>
-      <div class="block-hint" style="margin-top:-4px;">Basate su tutte le schede con punteggio compilato, su tutti i panel a cui hai partecipato</div>
+      <div class="block-hint" style="margin-top:-4px;">Basate sulle tue schede compilate nei panel già conclusi (non su quelli ancora "In corso", per non condizionarti nelle valutazioni)</div>
       <div id="statsHost"></div>
     </div>
 
@@ -1032,10 +1032,22 @@ async function backToDashboard(){
    CARICAMENTO DATI DA SUPABASE
    ============================================================ */
 // Statistiche personali del panelist loggato, su tutte le schede con
-// punteggio compilato (tutti i panel, non solo quello aperto). Solo le
+// punteggio compilato — MA SOLO per panel già "Completato". Solo le
 // PROPRIE schede: le RLS impediscono comunque a un Panelist di leggere
 // quelle di altri, quindi non ha senso interpretare questa sezione come
 // una classifica tra panelist — è un riepilogo personale.
+//
+// IMPORTANTE — integrità del blind tasting: questa sezione mostra
+// l'anagrafica (produttore, vitola) del sigaro col voto più alto/più
+// basso. Se un panel è ancora "In corso", il panelist NON deve poter
+// scoprire l'identità di un sigaro che ha già valutato (o che altri
+// stanno ancora valutando), altrimenti si condizionerebbe nelle
+// valutazioni successive sullo stesso panel — la compilazione delle
+// schede deve restare cieca finché il panel non è chiuso. Per questo il
+// filtro `sigari.panels.stato = 'completato'` è applicato DIRETTAMENTE
+// nella query (non solo a valle nel rendering): una scheda di un panel
+// ancora aperto non viene proprio scaricata, a prescindere da qualunque
+// logica di visualizzazione successiva.
 async function loadStatistichePersonali(){
   const host = document.getElementById('statsHost');
   if(!host) return;
@@ -1043,9 +1055,10 @@ async function loadStatistichePersonali(){
 
   const { data: schede, error } = await sb
     .from('schede_degustazione')
-    .select('id, punteggio, data, sigaro_id, sigari(numero_sigaro, panel_id, panels(numero))')
+    .select('id, punteggio, data, sigaro_id, sigari!inner(numero_sigaro, panel_id, panels!inner(numero, stato))')
     .eq('utente_id', currentUser.id)
     .not('punteggio', 'is', null)
+    .eq('sigari.panels.stato', 'completato')
     .order('data', {ascending:false});
 
   if(error){
@@ -1054,7 +1067,7 @@ async function loadStatistichePersonali(){
     return;
   }
   if(!schede || schede.length === 0){
-    host.innerHTML = '<div class="empty-note">Nessuna scheda con punteggio ancora compilata: le statistiche appariranno qui dopo la tua prima valutazione.</div>';
+    host.innerHTML = '<div class="empty-note">Le statistiche appariranno qui dopo la chiusura di almeno un panel a cui hai partecipato con una valutazione compilata — restano nascoste finché un panel è ancora "In corso", per non condizionarti nelle valutazioni.</div>';
     return;
   }
 
