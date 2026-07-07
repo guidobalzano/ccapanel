@@ -354,6 +354,8 @@ footer.foot{
   cursor:pointer;border-bottom:2px solid transparent;
 }
 .tab-btn.active{color:var(--gold-light);border-bottom-color:var(--red);}
+.tab-btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
 .admin-panel{margin-top:10px;}
 table.admin-table{width:100%;border-collapse:collapse;margin-top:14px;}
 table.admin-table th{
@@ -557,7 +559,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
       <div id="sigariBlock" class="hidden">
         <div class="inline-form">
           <div class="field"><label>Numero sigaro</label><input type="text" id="ns-numero" placeholder="es. 14"></div>
-          <button class="btn btn-primary" onclick="apriModaleNuovoSigaro()">＋ Aggiungi Sigaro</button>
+          <button class="btn btn-primary" id="btnAggiungiSigaro" onclick="apriModaleNuovoSigaro()">＋ Aggiungi Sigaro</button>
         </div>
         <table class="admin-table">
           <thead><tr><th>Sigaro n.</th><th>Assegnato a</th><th></th></tr></thead>
@@ -654,6 +656,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
           <select id="np-role">
             <option value="degustatore">Panelist</option>
             <option value="admin">Admin</option>
+            <option value="supporto_admin">Supporto Admin</option>
           </select>
         </div>
         <div class="field"><label>Password iniziale</label><input type="text" id="np-password" placeholder="scelta dall'admin, min. 6 caratteri" required></div>
@@ -691,6 +694,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
           <select id="eu-role" style="background:#fff;color:#1c1712;border:1px solid #ccc;">
             <option value="degustatore">Panelist</option>
             <option value="admin">Admin</option>
+            <option value="supporto_admin">Supporto Admin</option>
           </select>
         </div>
         <div id="eu-err" style="color:#b5202c;font-weight:600;font-size:12.5px;min-height:14px;margin:6px 0 8px;"></div>
@@ -775,6 +779,22 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
         <div class="err" id="pw-ok" style="min-height:14px;color:#3fae5c;"></div>
         <button class="btn btn-primary" style="align-self:flex-start;" onclick="changeOwnPassword()">Aggiorna Password</button>
       </div>
+
+      <div id="supportoAdminPermessiSection" class="hidden">
+        <div class="section-title" style="margin-top:36px;"><h2>Permessi Supporto Admin</h2><div class="rule"></div></div>
+        <div class="block-hint" style="font-size:15px;line-height:1.6;font-style:normal;">
+          Un utente con ruolo "Supporto Admin" ha di default tre funzioni disabilitate (visibili ma non cliccabili): "Aggiungi Sigaro", "Anagrafica" di ciascun sigaro, e l'intero tab "4. Esito Panel". Da qui puoi sbloccarle o ribloccarle per un utente specifico — tutte e tre insieme, non singolarmente. Questa sezione è visibile e utilizzabile solo da un Admin: nemmeno un Supporto Admin sbloccato può modificarla, nemmeno per se stesso.
+        </div>
+        <div class="inline-form" style="max-width:640px;">
+          <div class="field">
+            <label>Utente Supporto Admin</label>
+            <select id="sa-permessi-utente"></select>
+          </div>
+          <button class="btn btn-primary btn-small" onclick="impostaPermessiEstesiSupportoAdmin(true)">Abilita</button>
+          <button class="btn btn-danger btn-small" onclick="impostaPermessiEstesiSupportoAdmin(false)">Disabilita</button>
+        </div>
+        <div id="sa-permessi-status" class="subtle" style="margin-top:8px;"></div>
+      </div>
     </div>
 
   </div>
@@ -839,6 +859,21 @@ window.CCA_CONFIG = {
 const sb = window.supabase.createClient(window.CCA_CONFIG.SUPABASE_URL, window.CCA_CONFIG.SUPABASE_ANON_KEY);
 
 let currentUser = null;
+
+// ---- Ruolo "Supporto Admin" ----
+// Ha gli stessi identici poteri di "admin" in tutto e per tutto, TRANNE
+// tre eccezioni attive di default (visibili ma non cliccabili):
+//  1. "Aggiungi Sigaro" nel tab Panel
+//  2. "Anagrafica" per ciascun sigaro
+//  3. L'intero tab "4. Esito Panel"
+// Sblocco/blocco di queste tre eccezioni insieme (non singolarmente) è
+// gestito da un admin (mai da un Supporto Admin, nemmeno per se stesso)
+// nel tab Configurazioni, tramite profiles.permessi_estesi_sbloccati.
+let _isSupportoAdmin = false;
+let _supportoAdminSbloccato = false;
+function restrizioniSupportoAdminAttive(){
+  return _isSupportoAdmin && !_supportoAdminSbloccato;
+}
 let _panelsCache = [];
 let _usersCache = [];
 let _selectedSigariPanelId = null;
@@ -991,16 +1026,19 @@ async function doLogin(){
 
   const { data: { user } } = await sb.auth.getUser();
   const { data: profile, error: pErr } = await sb.from('profiles').select('*').eq('id', user.id).single();
-  if(pErr || !profile || profile.role !== 'admin'){
+  if(pErr || !profile || (profile.role !== 'admin' && profile.role !== 'supporto_admin')){
     err.textContent = 'Accesso riservato agli amministratori.';
     await sb.auth.signOut();
     return;
   }
   currentUser = { id: profile.id, username: profile.username, name: profile.full_name, role: profile.role };
+  _isSupportoAdmin = profile.role === 'supporto_admin';
+  _supportoAdminSbloccato = !!profile.permessi_estesi_sbloccati;
   avviaHeartbeat();
   document.getElementById('loginShell').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('whoName').textContent = currentUser.name + ' (admin)';
+  document.getElementById('whoName').textContent = currentUser.name + (_isSupportoAdmin ? ' (supporto admin)' : ' (admin)');
+  applicaRestrizioniSupportoAdminUI();
   if(profile.must_change_password){
     enterForcedPasswordMode();
   } else {
@@ -1093,12 +1131,15 @@ async function tryRestoreSession(){
   const { data: { session } } = await sb.auth.getSession();
   if(!session || !session.user) return;
   const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-  if(!profile || profile.role !== 'admin'){ return; }
+  if(!profile || (profile.role !== 'admin' && profile.role !== 'supporto_admin')){ return; }
   currentUser = { id: profile.id, username: profile.username, name: profile.full_name, role: profile.role };
+  _isSupportoAdmin = profile.role === 'supporto_admin';
+  _supportoAdminSbloccato = !!profile.permessi_estesi_sbloccati;
   avviaHeartbeat();
   document.getElementById('loginShell').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('whoName').textContent = currentUser.name + ' (admin)';
+  document.getElementById('whoName').textContent = currentUser.name + (_isSupportoAdmin ? ' (supporto admin)' : ' (admin)');
+  applicaRestrizioniSupportoAdminUI();
   if(profile.must_change_password){
     enterForcedPasswordMode();
   } else {
@@ -1131,13 +1172,17 @@ async function forzaRefreshOnline(){
   }
 }
 function switchTab(name){
+  if(name === 'export' && restrizioniSupportoAdminAttive()){
+    showAlert('La sezione "Esito Panel" è al momento disabilitata per il tuo account (Supporto Admin). Un Admin può sbloccarla dal tab Configurazioni.');
+    return;
+  }
   ['panels','assign','export','archive','users','password'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
     document.querySelector('.tab-btn[data-tab="'+t+'"]').classList.toggle('active', t===name);
   });
   if(name === 'archive'){ loadArchiveTable(); }
   if(name === 'export'){ populateExportSelector(); }
-  if(name === 'password'){ loadAiInstructions(true); }
+  if(name === 'password'){ loadAiInstructions(true); popolaSelectSupportoAdmin(); }
 
   // Mentre il tab "Utenti" \u00e8 aperto, aggiorna lo stato Online ogni 15s
   // (stessa cadenza dell'heartbeat), cos\u00ec l'admin lo vede quasi in
@@ -1146,6 +1191,82 @@ function switchTab(name){
   if(name === 'users'){
     loadUsersTable();
     _usersTableRefreshInterval = setInterval(loadUsersTable, 15000);
+  }
+}
+
+// Applica visivamente (bottoni/tab visibili ma non cliccabili) le
+// restrizioni di default per un Supporto Admin non ancora sbloccato.
+// Chiamata una volta al login/ripristino sessione. Il bottone
+// "Anagrafica" per riga sigaro è gestito direttamente nel template di
+// rendering (non qui), perché viene ricreato ad ogni caricamento dati.
+function applicaRestrizioniSupportoAdminUI(){
+  const attive = restrizioniSupportoAdminAttive();
+  const tabEsito = document.querySelector('.tab-btn[data-tab="export"]');
+  if(tabEsito){
+    tabEsito.disabled = attive;
+    tabEsito.title = attive ? 'Sezione disabilitata per Supporto Admin: sbloccabile da un Admin in Configurazioni' : '';
+  }
+  const btnAggiungi = document.getElementById('btnAggiungiSigaro');
+  if(btnAggiungi){
+    btnAggiungi.disabled = attive;
+    btnAggiungi.title = attive ? 'Disabilitato per Supporto Admin: sbloccabile da un Admin in Configurazioni' : '';
+  }
+  // La sezione di sblocco/blocco è visibile SOLO per un Admin vero e
+  // proprio — mai per un Supporto Admin, nemmeno se già sbloccato.
+  const sezionePermessi = document.getElementById('supportoAdminPermessiSection');
+  if(sezionePermessi){
+    sezionePermessi.classList.toggle('hidden', currentUser.role !== 'admin');
+  }
+  // Il ruolo "Supporto Admin" può essere assegnato/creato SOLO da un
+  // Admin: un Supporto Admin che crea o modifica un utente non deve
+  // nemmeno vedere quell'opzione nel menu a tendina del ruolo.
+  if(currentUser.role !== 'admin'){
+    ['np-role','eu-role'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      const opt = sel.querySelector('option[value="supporto_admin"]');
+      if(opt) opt.remove();
+    });
+  }
+}
+
+// Popola il menu a tendina con i soli utenti "Supporto Admin", per la
+// sezione Permessi (Configurazioni). Chiamata al primo accesso al tab e
+// ogni volta che si riapre (così riflette eventuali utenti creati nel
+// frattempo). Non fa nulla se la sezione non è visibile (utente non admin).
+function popolaSelectSupportoAdmin(){
+  if(currentUser.role !== 'admin') return;
+  const sel = document.getElementById('sa-permessi-utente');
+  if(!sel) return;
+  const supportoAdminUsers = (_usersCache || []).filter(u => u.role === 'supporto_admin');
+  if(supportoAdminUsers.length === 0){
+    sel.innerHTML = '<option value="">— nessun utente Supporto Admin —</option>';
+    return;
+  }
+  sel.innerHTML = supportoAdminUsers
+    .map(u => `<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.username)})${u.permessi_estesi_sbloccati ? ' · sbloccato' : ' · bloccato'}</option>`)
+    .join('');
+}
+
+// Abilita/disabilita insieme le tre eccezioni per l'utente Supporto Admin
+// selezionato. Passa SEMPRE dalla Edge Function (mai un update diretto
+// alla tabella profiles dal client): è lì che vive il controllo "solo un
+// Admin vero può farlo", non aggirabile modificando il DOM.
+async function impostaPermessiEstesiSupportoAdmin(sbloccato){
+  const sel = document.getElementById('sa-permessi-utente');
+  const status = document.getElementById('sa-permessi-status');
+  const userId = sel ? sel.value : '';
+  if(!userId){ showAlert('Seleziona un utente Supporto Admin.'); return; }
+  const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+  try{
+    await callAdminUsersFunction({ action:'set_permessi_estesi', user_id:userId, sbloccato });
+    status.textContent = (sbloccato ? '✓ Permessi sbloccati' : '✓ Permessi bloccati') + ' per ' + label + '.';
+    status.style.color = '#2f7a3f';
+    await loadUsersTable();
+    popolaSelectSupportoAdmin();
+  }catch(err){
+    status.textContent = 'Errore: ' + err.message;
+    status.style.color = '#b5202c';
   }
 }
 
@@ -1386,7 +1507,7 @@ async function renderSigariTable(){
       <td data-label="Sigaro n.">Sigaro n. ${escapeHtml(s.numero_sigaro)}</td>
       <td data-label="Assegnato a">${ass.length? escapeHtml(ass.join(', ')) : '<span class="subtle">Nessuno</span>'}</td>
       <td data-label="Azioni" style="white-space:nowrap;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-small" data-sigaro-id="${s.id}" data-numero-sigaro="${escapeHtml(s.numero_sigaro)}" onclick="apriModaleAnagraficaEsistente(this.dataset.sigaroId, this.dataset.numeroSigaro)">Anagrafica</button>
+        <button class="btn btn-small" data-sigaro-id="${s.id}" data-numero-sigaro="${escapeHtml(s.numero_sigaro)}" onclick="apriModaleAnagraficaEsistente(this.dataset.sigaroId, this.dataset.numeroSigaro)" ${restrizioniSupportoAdminAttive() ? 'disabled title="Disabilitato per Supporto Admin: sbloccabile da un Admin in Configurazioni"' : ''}>Anagrafica</button>
         <button class="btn btn-small btn-danger" onclick="deleteSigaro(${s.id})">Elimina</button>
       </td>
     `;
@@ -1426,6 +1547,10 @@ function resetModaleAnagraficaForm(){
 }
 
 async function apriModaleNuovoSigaro(){
+  if(restrizioniSupportoAdminAttive()){
+    showAlert('Funzione disabilitata per il tuo account (Supporto Admin). Un Admin può sbloccarla dal tab Configurazioni.');
+    return;
+  }
   const numero_sigaro = document.getElementById('ns-numero').value.trim();
   if(!numero_sigaro || !_selectedSigariPanelId){
     showAlert('Inserisci un numero sigaro valido prima di continuare.');
@@ -1458,6 +1583,10 @@ async function apriModaleNuovoSigaro(){
 }
 
 async function apriModaleAnagraficaEsistente(sigaroId, numeroSigaro){
+  if(restrizioniSupportoAdminAttive()){
+    showAlert('Funzione disabilitata per il tuo account (Supporto Admin). Un Admin può sbloccarla dal tab Configurazioni.');
+    return;
+  }
   resetModaleAnagraficaForm();
   document.getElementById('sa-title').textContent = 'Anagrafica Sigaro n. ' + numeroSigaro;
   document.getElementById('sa-sigaro-id').value = sigaroId;
@@ -1581,7 +1710,7 @@ async function populateAssignSelectors(){
   const exSel = panelSel; // placeholder, gestito separatamente sotto
   const utenteSel = document.getElementById('as-utente');
   utenteSel.innerHTML = _usersCache
-    .map(u=>`<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.username)}${u.role==='admin'?' · admin':''})</option>`).join('');
+    .map(u=>`<option value="${u.id}">${escapeHtml(u.full_name)} (${escapeHtml(u.username)}${u.role==='admin'?' · admin':(u.role==='supporto_admin'?' · supporto admin':'')})</option>`).join('');
 
   await renderAssignTable();
 }
@@ -1906,7 +2035,7 @@ async function loadUsersTable(){
       <td data-label="Nome">${escapeHtml(u.full_name)}</td>
       <td data-label="Email">${escapeHtml(_emailsById[u.id] || '—')}</td>
       <td data-label="Telefono">${escapeHtml(u.telefono || '—')}</td>
-      <td data-label="Ruolo">${escapeHtml(u.role === 'degustatore' ? 'Panelist' : (u.role === 'admin' ? 'Admin' : u.role))}</td>
+      <td data-label="Ruolo">${escapeHtml(u.role === 'degustatore' ? 'Panelist' : (u.role === 'admin' ? 'Admin' : (u.role === 'supporto_admin' ? 'Supporto Admin' : u.role)))}</td>
       <td data-label="Online">${onlineLabel}</td>
       <td data-label="Registrato il">${formatDateTime(u.created_at)}</td>
       <td data-label="Azioni">
@@ -1972,7 +2101,15 @@ function openEditUserModal(userId){
   document.getElementById('eu-cognome').value = u.cognome || '';
   document.getElementById('eu-email').value = _emailsById[u.id] || '';
   document.getElementById('eu-telefono').value = u.telefono || '';
-  document.getElementById('eu-role').value = u.role || 'degustatore';
+  const roleSel = document.getElementById('eu-role');
+  // Il campo ruolo è modificabile SOLO da un Admin: un Supporto Admin non
+  // deve poter cambiare il ruolo di nessuno (nemmeno il proprio), anche
+  // solo modificando altri campi dello stesso utente — vedi anche
+  // saveEditedUser(), che per sicurezza non include comunque "role" nel
+  // payload se chi salva non è Admin, indipendentemente da questo stato
+  // visivo del campo.
+  roleSel.value = u.role || 'degustatore';
+  roleSel.disabled = currentUser.role !== 'admin';
   document.getElementById('eu-err').textContent = '';
   document.getElementById('editUserModal').classList.remove('hidden');
 }
@@ -1999,9 +2136,16 @@ async function saveEditedUser(){
   const original = _usersCache.find(x=>x.id===id);
   const emailChanged = original && (_emailsById[id] || '') !== email;
 
-  // 1) campi normali: aggiornamento diretto sulla tabella profiles
+  // 1) campi normali: aggiornamento diretto sulla tabella profiles.
+  // Il campo "role" viene incluso SOLO se chi salva è un Admin — un
+  // Supporto Admin non deve poter cambiare il ruolo di nessun utente
+  // (nemmeno involontariamente), anche modificando solo altri campi.
+  const updatePayload = { nome, cognome, full_name, telefono: telefono || null };
+  if(currentUser.role === 'admin'){
+    updatePayload.role = role;
+  }
   const { error: updErr } = await sb.from('profiles')
-    .update({ nome, cognome, full_name, telefono: telefono || null, role })
+    .update(updatePayload)
     .eq('id', id);
   if(updErr){ err.textContent = 'Errore: ' + updErr.message; return; }
 
