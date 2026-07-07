@@ -522,6 +522,7 @@ table.admin-table .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
     </div>
     <div class="who">
       <div class="name" id="whoName">—</div>
+      <span id="whoFunzioniAvanzate" class="hidden" style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:12px;border:1px solid;white-space:nowrap;"></span>
       <button class="btn btn-ghost btn-small" onclick="logout()">Esci</button>
     </div>
   </div>
@@ -1210,6 +1211,26 @@ function applicaRestrizioniSupportoAdminUI(){
   if(btnAggiungi){
     btnAggiungi.disabled = attive;
     btnAggiungi.title = attive ? 'Disabilitato per Supporto Admin: sbloccabile da un Admin in Configurazioni' : '';
+  }
+  // Badge "Funzioni Avanzate" nell'header, visibile SOLO per un Supporto
+  // Admin (mai per un Admin vero, per cui la distinzione non ha senso).
+  // Riflette _supportoAdminSbloccato, di default disabilitate.
+  const badge = document.getElementById('whoFunzioniAvanzate');
+  if(badge){
+    if(_isSupportoAdmin){
+      badge.classList.remove('hidden');
+      if(_supportoAdminSbloccato){
+        badge.textContent = 'Funzioni Avanzate: Abilitate';
+        badge.style.color = '#5fbf6a';
+        badge.style.borderColor = '#5fbf6a';
+      }else{
+        badge.textContent = 'Funzioni Avanzate: Disabilitate';
+        badge.style.color = 'var(--ash)';
+        badge.style.borderColor = 'var(--ash)';
+      }
+    }else{
+      badge.classList.add('hidden');
+    }
   }
   // La sezione di sblocco/blocco è visibile SOLO per un Admin vero e
   // proprio — mai per un Supporto Admin, nemmeno se già sbloccato.
