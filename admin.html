@@ -3432,7 +3432,8 @@ async function loadArchiveTable(){
   });
 
   host.innerHTML = '';
-  const panelsConSigari = panels.filter(p => byPanel[p.id]);
+  const panelsConSigari = panels.filter(p => byPanel[p.id])
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   empty.classList.toggle('hidden', panelsConSigari.length > 0);
   window._archiveRowsByPanel = window._archiveRowsByPanel || {};
 
