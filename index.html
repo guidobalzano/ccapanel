@@ -406,6 +406,10 @@ footer.foot{
       <div class="section-title"><h2>Panel</h2><div class="rule"></div></div>
       <div class="block-hint" style="margin-top:-4px;">Seleziona un panel per vedere i sigari a te assegnati</div>
       <div id="panelCardsHost" class="grid-cards"></div>
+
+      <div class="section-title" style="margin-top:50px;"><h2>Le tue statistiche</h2><div class="rule"></div></div>
+      <div class="block-hint" style="margin-top:-4px;">Basate su tutte le schede con punteggio compilato, su tutti i panel a cui hai partecipato</div>
+      <div id="statsHost"></div>
     </div>
 
     <!-- ===== PANEL DETAIL (cigar list) ===== -->
@@ -1021,13 +1025,120 @@ async function backToDashboard(){
   showView('panelListView');
   await loadPanels();
   avviaCountdownPanelPanelist();
+  loadStatistichePersonali(); // non bloccante: la dashboard non aspetta le statistiche per apparire
 }
 
 /* ============================================================
    CARICAMENTO DATI DA SUPABASE
    ============================================================ */
+// Statistiche personali del panelist loggato, su tutte le schede con
+// punteggio compilato (tutti i panel, non solo quello aperto). Solo le
+// PROPRIE schede: le RLS impediscono comunque a un Panelist di leggere
+// quelle di altri, quindi non ha senso interpretare questa sezione come
+// una classifica tra panelist — è un riepilogo personale.
+async function loadStatistichePersonali(){
+  const host = document.getElementById('statsHost');
+  if(!host) return;
+  host.innerHTML = '<div class="empty-note">Caricamento statistiche…</div>';
+
+  const { data: schede, error } = await sb
+    .from('schede_degustazione')
+    .select('id, punteggio, data, sigaro_id, sigari(numero_sigaro, panel_id, panels(numero))')
+    .eq('utente_id', currentUser.id)
+    .not('punteggio', 'is', null)
+    .order('data', {ascending:false});
+
+  if(error){
+    console.error('[Statistiche] errore caricamento schede:', error);
+    host.innerHTML = '<div class="empty-note">Errore nel caricamento delle statistiche.</div>';
+    return;
+  }
+  if(!schede || schede.length === 0){
+    host.innerHTML = '<div class="empty-note">Nessuna scheda con punteggio ancora compilata: le statistiche appariranno qui dopo la tua prima valutazione.</div>';
+    return;
+  }
+
+  // Anagrafica dei sigari coinvolti, in un'unica query, unita lato client
+  // (stesso pattern robusto già usato in admin.html, invece di un nesting
+  // a 3 livelli sigari->sigari_anagrafica non verificato in questo progetto).
+  const sigaroIds = [...new Set(schede.map(s => s.sigaro_id).filter(Boolean))];
+  let anagraficaBySigaroId = {};
+  if(sigaroIds.length > 0){
+    const { data: anagRows, error: anagErr } = await sb
+      .from('sigari_anagrafica')
+      .select('sigaro_id, produttore, vitola_de_salida')
+      .in('sigaro_id', sigaroIds);
+    if(anagErr) console.error('[Statistiche] errore caricamento anagrafica:', anagErr);
+    else (anagRows||[]).forEach(a => { anagraficaBySigaroId[a.sigaro_id] = a; });
+  }
+
+  const righe = schede.map(s=>{
+    const anag = anagraficaBySigaroId[s.sigaro_id];
+    return {
+      punteggio: s.punteggio,
+      data: s.data,
+      numeroSigaro: s.sigari ? s.sigari.numero_sigaro : '—',
+      panelNumero: s.sigari && s.sigari.panels ? s.sigari.panels.numero : '—',
+      produttore: anag ? anag.produttore : '',
+      vitola: anag ? anag.vitola_de_salida : '',
+    };
+  });
+
+  const totale = righe.length;
+  const somma = righe.reduce((tot,r)=>tot + Number(r.punteggio), 0);
+  const media = somma / totale;
+  const piuAlto = righe.reduce((a,b)=> Number(b.punteggio) > Number(a.punteggio) ? b : a);
+  const piuBasso = righe.reduce((a,b)=> Number(b.punteggio) < Number(a.punteggio) ? b : a);
+  const ultima = righe[0]; // già ordinate per data decrescente dalla query
+  const panelDistinti = new Set(righe.map(r=>r.panelNumero)).size;
+
+  // Distribuzione per fascia (Eccezionale/Ottimo/Buono/...), usando la
+  // stessa tabella di riferimento condivisa con admin.html (score-bands.js).
+  const distribuzione = {};
+  righe.forEach(r=>{
+    const band = window.scoreBandFind ? window.scoreBandFind(r.punteggio) : null;
+    const label = band ? band.label : 'N/D';
+    distribuzione[label] = (distribuzione[label]||0) + 1;
+  });
+  const distribuzioneTxt = Object.entries(distribuzione)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([label,count])=> `${label}: ${count}`)
+    .join(' · ');
+
+  const rigaSigaro = (r) => `
+    <div class="cig-no">Sigaro n. ${escapeHtml(r.numeroSigaro)} <span class="subtle">(Panel ${escapeHtml(r.panelNumero)})</span></div>
+    <div class="cig-date">${r.produttore ? escapeHtml(r.produttore) : 'Produttore non disponibile'}${r.vitola ? ' — ' + escapeHtml(r.vitola) : ''}</div>
+  `;
+
+  host.innerHTML = `
+    <div class="grid-cards">
+      <div class="card">
+        <div class="cig-no" style="color:var(--gold-light);">🏆 Voto più alto</div>
+        ${rigaSigaro(piuAlto)}
+        <div class="score" style="color:#5fbf6a;">${escapeHtml(piuAlto.punteggio)}</div>
+      </div>
+      <div class="card">
+        <div class="cig-no" style="color:var(--gold-light);">📉 Voto più basso</div>
+        ${rigaSigaro(piuBasso)}
+        <div class="score" style="color:var(--red);">${escapeHtml(piuBasso.punteggio)}</div>
+      </div>
+      <div class="card">
+        <div class="cig-no" style="color:var(--gold-light);">📊 Riepilogo</div>
+        <div class="cig-date">Sigari degustati: <strong>${totale}</strong></div>
+        <div class="cig-date">Panel a cui hai partecipato: <strong>${panelDistinti}</strong></div>
+        <div class="cig-date">Punteggio medio: <strong>${media.toFixed(1)}</strong></div>
+        <div class="cig-date">Ultima degustazione: <strong>${formatDate(ultima.data)}</strong></div>
+      </div>
+      <div class="card">
+        <div class="cig-no" style="color:var(--gold-light);">🎯 Distribuzione per fascia</div>
+        <div class="meta" style="margin-top:8px;line-height:1.7;">${distribuzioneTxt}</div>
+      </div>
+    </div>
+  `;
+}
+
 async function loadPanels(){
-  const { data, error } = await sb.from('panels').select('*').order('numero', {ascending:true});
+  const { data, error } = await sb.from('panels').select('*').order('numero', {ascending:false});
   if(error){ console.error(error); return; }
   _panelsCache = data || [];
   renderPanelList();
