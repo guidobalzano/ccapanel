@@ -71,8 +71,11 @@ a{color:var(--gold-light);}
   transition:.18s;
 }
 .btn:hover{background:var(--gold);color:var(--ink);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn:disabled:hover{background:transparent;color:var(--gold-light);}
 .btn-primary{background:var(--red);border-color:var(--red);color:#f4ead8;}
 .btn-primary:hover{background:var(--red-2);border-color:var(--red-2);color:#fff;}
+.btn-primary:disabled:hover{background:var(--red);color:#f4ead8;}
 .btn-ghost{border-color:rgba(205,185,144,.4);color:var(--ash);}
 .btn-ghost:hover{background:rgba(205,185,144,.15);color:var(--paper);}
 .btn-small{padding:6px 12px;font-size:11px;}
@@ -498,8 +501,9 @@ footer.foot{
               <label>Durata fumata (minuti)</label>
               <div style="display:flex;gap:6px;align-items:center;">
                 <input type="number" id="f-durata" placeholder="es. 55" style="flex:1;min-width:0;">
-                <button type="button" class="btn btn-small btn-ghost" id="btnAvviaTimer" onclick="avviaDurataTimer()" title="Avvia il timer della fumata">▶ Avvia</button>
-                <button type="button" class="btn btn-small btn-ghost" id="btnStopTimer" onclick="stopDurataTimer()" title="Ferma il timer e congela la durata" disabled>⏹ Stop</button>
+                <button type="button" class="btn btn-small btn-primary" id="btnAvviaTimer" onclick="avviaDurataTimer()" title="Avvia il timer della fumata">▶ Avvia</button>
+                <button type="button" class="btn btn-small btn-primary" id="btnStopTimer" onclick="stopDurataTimer()" title="Ferma il timer e congela la durata" disabled>⏹ Stop</button>
+                <button type="button" class="btn btn-small btn-ghost" id="btnResetTimer" onclick="resetDurataTimerBottone()" title="Azzera il timer: torna pronto per immissione manuale o nuovo avvio">↺ Reset</button>
               </div>
             </div>
           </div>
@@ -1558,18 +1562,32 @@ function stopDurataTimer(autoStopMax){
   }
 }
 
-// Reset "silenzioso" del timer, senza toccare il valore del campo: usato
-// quando si cambia scheda (nuova degustazione o modifica di un'altra),
-// per non lasciare acceso il timer di una scheda precedente.
-function resetDurataTimerSenzaSalvare(){
+// Reset del timer. Di default "silenzioso" (non tocca il valore del
+// campo): usato quando si cambia scheda (nuova degustazione o modifica
+// di un'altra), per non lasciare acceso il timer di una scheda
+// precedente — il valore viene comunque sovrascritto subito dopo da
+// resetForm()/openEdit(). Con svuotaCampo=true (bottone "Reset" nel
+// form) azzera anche il campo, riportandolo pronto per un'immissione
+// manuale o un nuovo avvio.
+function resetDurataTimerSenzaSalvare(svuotaCampo){
   if(_durataTimerInterval){ clearInterval(_durataTimerInterval); _durataTimerInterval = null; }
   _durataTimerStartMs = null;
   const input = document.getElementById('f-durata');
-  if(input){ input.type = 'number'; input.readOnly = false; }
+  if(input){
+    input.type = 'number';
+    input.readOnly = false;
+    if(svuotaCampo) input.value = '';
+  }
   const btnA = document.getElementById('btnAvviaTimer');
   const btnS = document.getElementById('btnStopTimer');
   if(btnA) btnA.disabled = false;
   if(btnS) btnS.disabled = true;
+}
+
+// Handler del bottone "Reset" nel form: azzera il timer E il campo,
+// tornando pronto per un'immissione manuale o un nuovo "Avvia".
+function resetDurataTimerBottone(){
+  resetDurataTimerSenzaSalvare(true);
 }
 
 // Minuti "correnti" della durata: se il timer è in esecuzione, calcolati
